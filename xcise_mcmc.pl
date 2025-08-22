@@ -87,7 +87,14 @@ srand($seed) if defined $seed;
 # -------------------- Load SNVs --------------------
 warn "Reading SNVs ...\n";
 my %snp_info = ();
-open my $VF, $snv_file or open $VF, 'gunzip -c '.$snv_file.' |' or die "Cannot open VCF: $!";
+
+my $VF;  # declare the handle
+if ( $snv_file =~ /\.gz$/ ) {
+    open($VF, "-|", "gunzip", "-c", $snv_file) or die "Cannot gunzip $snv_file: $!";
+} else {
+    open($VF, "<", $snv_file) or die "Cannot open $snv_file: $!";
+}
+
 while ( my $line = <$VF> ) {
     next if $line =~ m/^\#/;
     chomp $line;
@@ -98,7 +105,8 @@ while ( my $line = <$VF> ) {
     $snp_info{$arr[1]}{'alt'} = $arr[4];
 }
 close $VF;
-warn scalar( keys %snp_info), " SNVs were loaded from VCF file $snv_file\n";
+
+warn scalar(keys %snp_info), " SNVs were loaded from VCF file $snv_file\n";
 die "Zero SNVs, run terminated" unless keys %snp_info;
 
 # -------------------- Read BAMs & collect UMIs --------------------
