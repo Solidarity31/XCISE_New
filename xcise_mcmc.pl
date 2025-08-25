@@ -5,21 +5,29 @@ use File::Temp qw(tempdir);      # temp dir to collect child results
 use List::Util qw(shuffle min max);
 
 # XCISE (MCMC+MT edition) — drop-in replacement for xcise.pl
-# Adds: multi-SNV proposals and parallel tries
+# Adds: observation-based haplotype seeding, co-segregation graph output,
+#       multi-SNV proposals, simulated annealing, and parallel tries.
 # Outputs remain identical to original XCISE.
 #
 # New flags (in addition to original):
-#   -cs <int>        MCMC chain steps per try         (default 10000)
-#   -T0 <float>      Initial temperature              (default 1.0)
-#   -Tmin <float>    Final temperature                (default 0.01)
-#   -seed <int>      RNG seed                         (optional)
-#   -j <int>         Parallel tries (processes)       (default 1)
-#   -blocksize <int> Number of SNVs to flip per step  (default 1)
-#   -blocktype <str> "random" or "window"             (default random)
-#   -samthreads <int>Threads for samtools view (-@)   (default 1)
+#   -cs <int>          MCMC chain steps per try           (default 10000)
+#   -T0 <float>        Initial temperature                (default 1.0)
+#   -Tmin <float>      Final temperature                  (default 0.01)
+#   -seed <int>        RNG seed                           (optional)
+#   -j <int>           Parallel tries (processes)         (default 1)
+#   -blocksize <int>   Number of SNVs to flip per step    (default 1)
+#   -blocktype <str>   "random" or "window"               (default random)
+#   -samthreads <int>  Threads for samtools view (-@)     (default 1)
+#   -init <str>        "observed" or "random"             (default observed)
+#   -co_min_pairs <n>  Min molecules to trust an edge     (default 2)
+#   -init_jitter <f>   Fraction of SNVs to perturb at init(default 0.0)
+#   -writegraph <0|1>  Write co-graph TSV + DOT files     (default 1)
+#   -anchor_sign <+1|-1> Anchor sign per component        (default +1)
 #
 # Example:
-# perl xcise_mcmc_multithread.pl -o P1 -s P1_hets.vcf -b P1_WASP.bam -t 80 -j 8 -cs 4000 -blocksize 3 -blocktype random -samthreads 8
+# perl xcise_mcmc_multithread.pl -o P1 -s P1_hets.vcf -b P1_WASP.bam -t 80 -j 8 \
+#   -cs 4000 -blocksize 3 -blocktype random -samthreads 8 \
+#   -init observed -co_min_pairs 2 -init_jitter 0.03
 
 warn "Reading parameters ...\n";
 my ( $sample, $chromosome, $snv_file );
@@ -43,6 +51,13 @@ my $jobs = 1;                # parallel tries
 my $blocksize = 1;           # SNVs per proposal
 my $blocktype = 'random';    # or 'window'
 my $samthreads = 1;          # samtools -@
+
+# New init controls
+my $init_mode     = 'observed';  # 'observed' or 'random'
+my $co_min_pairs  = 2;           # min molecules linking a pair to trust relation
+my $init_jitter   = 0.0;         # fraction of SNVs to randomly perturb after seeding
+my $writegraph    = 1;           # write TSV + DOT
+my $anchor_sign   = 1;           # component anchor sign (+1 or -1)
 
 my %bams = ();
 my $ele = 0;
@@ -76,12 +91,21 @@ while ( $ele <= $#ARGV ) {
     elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-blocktype' ) { $blocktype = $ARGV[$ele+1]; $ele+=2; }
     elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-samthreads' ) { $samthreads = $ARGV[$ele+1]; $ele+=2; }
 
+    # New init flags
+    elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-init' ) { $init_mode = lc($ARGV[$ele+1]); $ele+=2; }
+    elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-co_min_pairs' ) { $co_min_pairs = $ARGV[$ele+1]; $ele+=2; }
+    elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-init_jitter' ) { $init_jitter = $ARGV[$ele+1]; $ele+=2; }
+    elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-writegraph' ) { $writegraph = $ARGV[$ele+1]; $ele+=2; }
+    elsif ( $ele < $#ARGV and $ARGV[$ele] eq '-anchor_sign' ) { $anchor_sign = $ARGV[$ele+1]; $ele+=2; }
+
     else { die "Unexpected/incomplete parameter:$ARGV[$ele]"; }
 }
 my $usage = 'Usage: perl '.$0.' -o <output_prefix> -s <vcf_file> -b <bam1> [bam2 ...] '
           . '[-r <chrom>] [-t <tries>] [-u <min_umis>] [-m <min_maf>] [-p <penalty>] '
           . '[-cs <steps>] [-T0 <T0>] [-Tmin <Tmin>] [-seed <int>] '
-          . '[-j <jobs>] [-blocksize <k>] [-blocktype random|window] [-samthreads <N>]'."\n";
+          . '[-j <jobs>] [-blocksize <k>] [-blocktype random|window] [-samthreads <N>] '
+          . '[-init observed|random] [-co_min_pairs <n>] [-init_jitter <f>] '
+          . '[-writegraph 0|1] [-anchor_sign +1|-1]'."\n";
 die "No Sample name\n".$usage unless $sample;
 warn "Sample: ", $sample, "\n";
 die "No VCF(SNV) file\n".$usage unless $snv_file;
@@ -96,6 +120,13 @@ $discordant_penalty = 5 if $discordant_penalty < 1; warn "Discordant penalty: ",
 $chain_steps = 10000 if $chain_steps <= 0; $T0 = 1.0 if $T0 <= 0; $Tmin = 0.01 if $Tmin <= 0;
 $jobs = 1 if $jobs < 1; $blocksize = 1 if $blocksize < 1; $blocktype = lc($blocktype);
 $samthreads = 1 if $samthreads < 1; srand($seed) if defined $seed;
+
+# init clamp
+$init_mode = 'observed' unless $init_mode =~ /^(observed|random)$/;
+$co_min_pairs = 2 if $co_min_pairs < 1;
+$init_jitter = 0.0 if $init_jitter < 0;
+$writegraph = 1 if $writegraph !~ /^[01]$/;
+$anchor_sign = ($anchor_sign && $anchor_sign < 0) ? -1 : 1;
 
 # -------------------- Load SNVs --------------------
 warn "Reading SNVs ...\n";
@@ -127,7 +158,7 @@ foreach my $file ( sort keys %bams ) {
     open my $SF, $cmd or die "samtools view failed";
     while ( my $line = <$SF> ) {
         next unless $line =~ m/\tvG\:B\:i\,\d/;  # allele-specific positions
-        next unless $line =~ m/\tvW\:i\:1/;        # WASP-passed
+        next unless $line =~ m/\tvW\:i\:1/;      # WASP-passed
         my ( $cigar, $seqstr ) = ( split /\t/, $line )[5,9];
         next if $seqstr =~ m/(G{$monostretch}|A{$monostretch}|T{$monostretch}|C{$monostretch})/;
         next if $no_softmasking and $cigar =~ m/\dS/;
@@ -140,7 +171,14 @@ foreach my $file ( sort keys %bams ) {
         if ( $line =~ m/\tUB\:Z\:(\S+)/ ) { $umi = $1; next if $umi eq '-'; $hard_umis++; }
         else { my ( $read, $flag, $chr, $pos, $mapq, $cg, $chr2, $pos2, $tlen ) = split /\t/, $line; $umi = join('_', $cb, $chr, $pos, $flag, $cg, $tlen ); $soft_umis++; }
         $inf_reads++;
-        for my $k ( 0 .. $#vG ) { my $pos = $vG[$k]+1; next unless exists $snp_info{$pos}; my $allele = $vA[$k]; next unless $allele == 1 or $allele == 2; $allele = 1+int(rand(2)) if $scramble_alleles; $inf_alleles++; $umis{$pos}{$allele}{$umi."\t".$cb}++; $cb2allele{$cb}{$pos}{$umi}=$allele; }
+        for my $k ( 0 .. $#vG ) {
+            my $pos = $vG[$k]+1; next unless exists $snp_info{$pos};
+            my $allele = $vA[$k]; next unless $allele == 1 or $allele == 2;
+            $allele = 1+int(rand(2)) if $scramble_alleles;
+            $inf_alleles++;
+            $umis{$pos}{$allele}{$umi."\t".$cb}++;
+            $cb2allele{$cb}{$pos}{$umi}=$allele;
+        }
     }
     close $SF;
 }
@@ -158,14 +196,140 @@ foreach my $pos ( sort {$a<=>$b} keys %umis ) {
     push @ratios, ($minv+$maxv) ? 100*$minv/($minv+$maxv) : 0;
     my $af = ($n1+$n2) ? $n1/($n1+$n2) : 0;
     if ( $af < $min_maf or $af > (1-$min_maf) ) { $low_maf++; next; }
-    push @phased_pos, $pos; push @phased_dir, int(rand(3))-1;
+    push @phased_pos, $pos; push @phased_dir, int(rand(3))-1; # placeholder; will be replaced by best solution
 }
 die "No SNVs to phase\n" unless @phased_pos;
 @ratios = sort {$a<=>$b} @ratios; my $median_maf = @ratios % 2 ? $ratios[$#ratios/2] : ($ratios[@ratios/2-1]+$ratios[@ratios/2])/2;
 warn "Excluded $low_umis SNVs < $min_umis UMIs; Excluded $low_maf SNVs with minor AF < $min_maf\n";
 warn "Median MAF: $median_maf\n";
 
-# -------------------- Helpers --------------------
+# -------------------- Build per-molecule map --------------------
+# molecule key = "UMI\tCB", value = { pos => allele(1|2) }
+my %molecule;
+foreach my $pos (keys %umis) {
+    foreach my $allele (keys %{$umis{$pos}}) {
+        foreach my $bc (keys %{$umis{$pos}{$allele}}) {
+            $molecule{$bc}{$pos} //= $allele;
+        }
+    }
+}
+
+# -------------------- Co-segregation graph & observation-based seed --------------------
+warn "Building co-segregation graph and observation-based init ...\n";
+# Map pos -> index
+my %pos2idx; for my $i (0..$#phased_pos){ $pos2idx{$phased_pos[$i]} = $i; }
+
+# Graph: w[i][j] net SAME(+1)/OPP(-1) votes, n[i][j] counts; deg[i] = sum |w|
+my (%w, %n, %deg);
+my $edge_pairs = 0;
+foreach my $bc (keys %molecule) {
+    my @pp = sort {$a<=>$b} grep { exists $pos2idx{$_} } keys %{$molecule{$bc}};
+    next if @pp < 2;
+    for (my $u=0; $u<$#pp; $u++){
+        for (my $v=$u+1; $v<@pp; $v++){
+            my $i = $pos2idx{$pp[$u]}; my $j = $pos2idx{$pp[$v]};
+            my $ai = $molecule{$bc}{$pp[$u]};
+            my $aj = $molecule{$bc}{$pp[$v]};
+            my $vote = ($ai == $aj) ? 1 : -1;
+            $w{$i}{$j} += $vote; $w{$j}{$i} += $vote;
+            $n{$i}{$j}++;      $n{$j}{$i}++;
+            $edge_pairs++;
+        }
+    }
+}
+warn "  Considered $edge_pairs co-observed SNV pairs across molecules.\n";
+
+for my $i (0..$#phased_pos){
+    my $d=0;
+    if (exists $w{$i}) {
+        foreach my $j (keys %{$w{$i}}){
+            next unless $n{$i}{$j} && $n{$i}{$j} >= $co_min_pairs;
+            my $absw = $w{$i}{$j}; $absw = -$absw if $absw < 0;
+            $d += $absw;
+        }
+    }
+    $deg{$i} = $d;
+}
+
+# Seed directions by BFS within components
+my @obs_seed = (0) x scalar(@phased_pos);
+sub _bfs_propagate {
+    my ($root) = @_;
+    my @Q = ($root);
+    $obs_seed[$root] = $anchor_sign;
+    while (@Q){
+        my $u = shift @Q;
+        next unless exists $w{$u};
+        foreach my $v (keys %{$w{$u}}){
+            next unless $n{$u}{$v} && $n{$u}{$v} >= $co_min_pairs;
+            my $rel = ($w{$u}{$v} >= 0) ? 1 : -1;   # + => same; - => opposite
+            my $cand = $obs_seed[$u] * $rel;
+            if ($obs_seed[$v] == 0){
+                $obs_seed[$v] = $cand;
+                push @Q, $v;
+            } else {
+                # conflict -> keep existing; MCMC will refine
+            }
+        }
+    }
+}
+
+my @order = sort { ($deg{$b} // 0) <=> ($deg{$a} // 0) } (0..$#phased_pos);
+for my $i (@order){
+    next if $obs_seed[$i] != 0;
+    next if ($deg{$i} // 0) <= 0;
+    _bfs_propagate($i);
+}
+
+# Optional graph exports
+if ($writegraph){
+    my $nf = $sample.'_chr'.$chromosome.'_coGraph_nodes.tsv';
+    my $ef = $sample.'_chr'.$chromosome.'_coGraph_edges.tsv';
+    my $df = $sample.'_chr'.$chromosome.'_coGraph.dot';
+    open my $FN, '>', $nf or die "Cannot write $nf: $!";
+    print $FN join("\t", qw(NodeIdx Pos Seed DirDegree)), "\n";
+    for my $i (0..$#phased_pos){
+        print $FN join("\t", $i, $phased_pos[$i], $obs_seed[$i], ($deg{$i}//0)), "\n";
+    }
+    close $FN;
+
+    open my $FE, '>', $ef or die "Cannot write $ef: $!";
+    print $FE join("\t", qw(U V CoMolecules NetVote)), "\n";
+    for my $i (0..$#phased_pos){
+        next unless exists $w{$i};
+        foreach my $j (keys %{$w{$i}}){
+            next if $j <= $i;
+            next unless $n{$i}{$j} && $n{$i}{$j} >= $co_min_pairs;
+            print $FE join("\t", $i, $j, $n{$i}{$j}, $w{$i}{$j}), "\n";
+        }
+    }
+    close $FE;
+
+    open my $FD, '>', $df or die "Cannot write $df: $!";
+    print $FD "graph CoGraph {\n  node [shape=circle, fontsize=10];\n";
+    for my $i (0..$#phased_pos){
+        my $label = $phased_pos[$i]."\\nseed=".$obs_seed[$i];
+        print $FD "  n$i [label=\"$label\"];\n";
+    }
+    for my $i (0..$#phased_pos){
+        next unless exists $w{$i};
+        foreach my $j (keys %{$w{$i}}){
+            next if $j <= $i;
+            next unless $n{$i}{$j} && $n{$i}{$j} >= $co_min_pairs;
+            my $style = ($w{$i}{$j} >= 0) ? "color=black" : "color=gray50,style=dashed";
+            my $penw  = 1 + int( abs($w{$i}{$j}) / 2 );
+            print $FD "  n$i -- n$j [label=\"n=".$n{$i}{$j}.", w=".$w{$i}{$j}."\", penwidth=$penw, $style];\n";
+        }
+    }
+    print $FD "}\n";
+    close $FD;
+
+    warn "  Wrote nodes: $nf\n";
+    warn "  Wrote edges: $ef\n";
+    warn "  Wrote dot  : $df\n";
+}
+
+# -------------------- Helpers (unchanged) --------------------
 sub build_cb2phase {
     my ( $umis_ref, $pp_ref, $pd_ref ) = @_;
     my %cb2phase = ();
@@ -216,6 +380,14 @@ sub apply_block_changes {
     }
 }
 
+# small helper for per-try jitter
+sub _jitter_assign {
+    my ($dir, $frac) = @_;
+    return $dir if $frac <= 0 || rand() >= $frac;
+    my @cand = (-1, 0, 1); @cand = grep { $_ != $dir } @cand;
+    return $cand[ int(rand(@cand)) ];
+}
+
 # -------------------- Parallel MCMC across tries --------------------
 warn "Starting XCI calling (MCMC + multi-SNV proposals, parallel tries)\n";
 my $tmpdir = tempdir( CLEANUP => 1 );
@@ -227,8 +399,18 @@ TRY: for my $try ( 1 .. $tries ) {
     # Child-local RNG nudged by try id so runs differ even w/o -seed
     srand( (defined $seed ? $seed : time) + $try * 1337 );
 
-    # initialize dirs randomly
-    my @local_dir = map { int(rand(3))-1 } (0 .. $#phased_pos);
+    # ---- initialize dirs ----
+    my @local_dir;
+    if ($init_mode eq 'observed') {
+        @local_dir = @obs_seed;                     # copy the observation-based seed
+        if ($init_jitter > 0) {
+            for my $i (0 .. $#local_dir) { $local_dir[$i] = _jitter_assign($local_dir[$i], $init_jitter); }
+        }
+        # any still-zero nodes are neutral; MCMC will decide
+    } else { # random
+        @local_dir = map { int(rand(3))-1 } (0 .. $#phased_pos);
+    }
+
     my $cb2phase_ref = build_cb2phase(\%umis, \@phased_pos, \@local_dir);
     my ($curr_score) = score_cb2phase($cb2phase_ref, $discordant_penalty);
     my $best_score = $curr_score; my @best_dir = @local_dir;
@@ -256,10 +438,10 @@ TRY: for my $try ( 1 .. $tries ) {
             my $new = $cand[ int(rand(@cand)) ]; push @old_states, $old; push @new_states, $new;
         }
 
-        # compute score before
+        # score before
         my ($score_before) = score_cb2phase($cb2phase_ref, $discordant_penalty);
 
-        # apply tentative block (update cb2phase + dir vector)
+        # apply tentative block
         apply_block_changes($cb2phase_ref, \%umis, \@phased_pos, \@idxs, \@old_states, \@new_states, \@local_dir);
 
         # score after
@@ -275,7 +457,7 @@ TRY: for my $try ( 1 .. $tries ) {
             apply_block_changes($cb2phase_ref, \%umis, \@phased_pos, \@idxs, \@new_states, \@old_states, \@local_dir);
         }
 
-        # optional progress log (commented to keep it fast)
+        # optional progress:
         # if ( $s % 2000 == 0 ) { warn "Try #$try step $s/$chain_steps best=$best_score acc=".(sprintf('%.3f',$accepted/$s))."\n"; }
     }
 
