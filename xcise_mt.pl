@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-# NEW: minimal deps for safe multi-process tries and temp dir
+# NEW: minimal deps for multi-process tries and temp dir
 use Parallel::ForkManager;       # NEW
 use File::Temp qw(tempdir);      # NEW
 
@@ -23,7 +23,7 @@ use File::Temp qw(tempdir);      # NEW
 # -samthreads threads for samtools -@
 # -seed base RNG seed
 
-warn "Reading parameters ...\n";
+warn "Reading parameters ...\n"; 
 my ( $sample, $chromosome, $snv_file);
 my $tries = 100;
 my $min_maf = 0;
@@ -217,7 +217,7 @@ foreach my $pos ( sort {$a<=>$b} keys %umis ) {
     my $af = scalar(keys %{$umis{$pos}{1}}) / ( scalar(keys %{$umis{$pos}{1}}) + scalar(keys %{$umis{$pos}{2}} ) );
     my ( $min, $max ) = ( scalar(keys %{$umis{$pos}{1}}), scalar(keys %{$umis{$pos}{2}}));
     ( $min, $max ) = ( $max, $min ) if $min > $max;
-    push @ratios, 100*$min/($min+$max);
+    push @ratios, 100*$min/($min+$max); 
     if ( $af < $min_maf or $af > ( 1 - $min_maf ) ) {
         $low_maf++;
         next;
@@ -239,7 +239,7 @@ my $tmpdir = tempdir( CLEANUP => 1 );             # NEW
 my $pm = Parallel::ForkManager->new($jobs);       # NEW
 
 # We'll collect best score/dir from children here:
-my $global_best;                                   # CHANGED: no init to q{}
+my $global_best;                                   # CHANGED: undef
 my @global_best_dir;                               # NEW
 
 TRY_LOOP:
@@ -257,7 +257,7 @@ foreach my $try ( 1 .. $tries ) {
         @phased_pos[$ele1,$ele2] = @phased_pos[$ele2,$ele1] if $ele1 != $ele2;
         $phased_dir[$ele] = int(rand(3))-1;
     }
-
+    
     warn "    Calculating initial score ...\n";
     my ( $t, $d, $c, $hap2, $hap0, $hap1 ) = (0,0,0,0,0,0);
     my %cb2phase = ();
@@ -271,8 +271,8 @@ foreach my $try ( 1 .. $tries ) {
         }
     }
     foreach my $cb ( keys %cb2phase ) {
-        my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0;
-        my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0;
+        my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0; 
+        my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0; 
         $t += $min + $max;
         ( $min, $max ) = ( $max, $min ) if $min > $max;
         next unless $max;
@@ -280,7 +280,7 @@ foreach my $try ( 1 .. $tries ) {
         $c += $max - 1;
     }
     my $score = $c - $discordant_penalty * $d;
-    warn "    SNVs: ",scalar(@phased_pos)," Initial score: $score, discordance rate : ",100*$d/($d+$c),"\n";
+    warn "    SNVs: ",scalar(@phased_pos)," Initial score: $score, discordance rate : ", ($d+$c ? 100*$d/($d+$c) : 0),"\n";
 
     my $best_score = $score;
     my ( $pass, $imps, $last_imp ) = ( 0, 1, 0 );
@@ -294,8 +294,8 @@ foreach my $try ( 1 .. $tries ) {
 
                 my ( $total, $disc, $conc ) = ( 0, 0, 0 );
                 foreach my $cb ( keys %cb2phase ) {
-                    my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0;
-                    my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0;
+                    my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0; 
+                    my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0; 
                     $total += $min + $max;
                     ( $min, $max ) = ( $max, $min ) if $min > $max;
                     next unless $max;
@@ -317,8 +317,8 @@ foreach my $try ( 1 .. $tries ) {
 
                 ( $total, $disc, $conc ) = ( 0, 0, 0 );
                 foreach my $cb ( keys %cb2phase ) {
-                    my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0;
-                    my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0;
+                    my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0; 
+                    my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0; 
                     $total += $min + $max;
                     ( $min, $max ) = ( $max, $min ) if $min > $max;
                     next unless $max;
@@ -346,8 +346,8 @@ foreach my $try ( 1 .. $tries ) {
                     }
                     my ( $total_, $disc_, $conc_ ) = ( 0, 0, 0 );
                     foreach my $cb ( keys %cb2phase ) {
-                        my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0;
-                        my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0;
+                        my $min = exists($cb2phase{$cb}{1}) ? $cb2phase{$cb}{1} : 0; 
+                        my $max = exists($cb2phase{$cb}{2}) ? $cb2phase{$cb}{2} : 0; 
                         $total_ += $min + $max;
                         ( $min, $max ) = ( $max, $min ) if $min > $max;
                         next unless $max;
@@ -357,18 +357,18 @@ foreach my $try ( 1 .. $tries ) {
                     my $score_restored = $conc_ - $discordant_penalty * $disc_;
                     die 'score_restored ne score_before' if $score_before != $score_restored;
                 } # if best score
-            } # foreach -1,0,1
+            } # foreach -1,0,1 
             last if $imps == 0 and $last_imp - $ele == 1; #No imps so far and the ext element is where we made improvement in the last pass
         } # foreach ele
         warn "    Pass: $pass Improvements: $imps Score: $best_score\n";
     } # while imps
 
-    # NOTE: We DO NOT write outputs inside children.
-    # Instead, write a tiny result file (score + dir) for parent to reduce:
+    # CHILD: write 3-line result: score, positions, directions  (Option B)
     my $resf = "$tmpdir/try_${try}.res";           # NEW
     open my $RF, '>', $resf or die "Cannot write $resf: $!";
     print $RF $best_score, "\n";
-    print $RF join(",", @phased_dir), "\n";
+    print $RF join(",", @phased_pos), "\n";       # NEW: child's position order
+    print $RF join(",", @phased_dir), "\n";       # NEW: child's directions aligned to positions
     close $RF;
     warn "    Finished Try #$try with Final score: $best_score\n";
 
@@ -376,22 +376,34 @@ foreach my $try ( 1 .. $tries ) {
 }
 $pm->wait_all_children;                            # NEW: PARENT waits
 
-# NEW: parent reduces best-scoring try and reuses original output block once
-#      (also honors -i improve_existing if present)
+# PARENT: reduce best-scoring try, realign to parent order, then output once
 {
-    # Reduce across children
+    my @parent_pos = @phased_pos;   # parent’s canonical order
     for my $try (1 .. $tries) {
         my $resf = "$tmpdir/try_${try}.res";
         next unless -e $resf;
         open my $RF, '<', $resf or die "Cannot read $resf: $!";
-        my $line1 = <$RF>; my $line2 = <$RF>;
+        my $line1 = <$RF>; my $line2 = <$RF>; my $line3 = <$RF>;
         close $RF;
-        chomp $line1; chomp $line2;
+        next unless defined $line1 and defined $line2 and defined $line3;
+        chomp $line1; chomp $line2; chomp $line3;
+
         my $score = $line1 + 0;
-        my @dir   = split(/,/, $line2);
+        my @child_pos = split(/,/, $line2);
+        my @child_dir = split(/,/, $line3);
+
+        # Build pos -> dir map and realign to parent order
+        my %pos2dir;
+        for (my $k=0; $k<=$#child_pos; $k++) {
+            my $p = $child_pos[$k];
+            my $d = (defined $child_dir[$k] && $child_dir[$k] ne '') ? $child_dir[$k]+0 : 0;
+            $pos2dir{$p} = $d;
+        }
+        my @dir_parent_order = map { exists $pos2dir{$_} ? $pos2dir{$_} : 0 } @parent_pos;
+
         if ( !defined $global_best or $score > $global_best ) {
             $global_best = $score;
-            @global_best_dir = @dir;
+            @global_best_dir = @dir_parent_order;
         }
     }
 
@@ -401,13 +413,13 @@ $pm->wait_all_children;                            # NEW: PARENT waits
         my $line = <FLOG>;
         die "Error reading summary file from previous run: $line" unless $line =~ m/^Best\sscore\s+\:\s+(\d+)/;
         if ( !$global_best or $1 > $global_best ) {
-             $global_best = $1;
+             $global_best = $1; 
              warn "    Updated global best score from previous run: $global_best\n";
         }
         close FLOG;
     }
 
-    # Rebuild cb2phase using the best directions, then produce outputs (original code)
+    # Rebuild cb2phase using the best directions, then produce outputs (same as original)
     my %cb2phase_best = ();
     for my $ele ( 0 .. $#global_best_dir ) {
         next unless defined $phased_pos[$ele];
@@ -432,8 +444,8 @@ $pm->wait_all_children;                            # NEW: PARENT waits
         }
         my ( $total, $disc, $conc ) = ( 0, 0, 0 );
         foreach my $cb ( keys %cb2phase_best ) {
-            my $min = exists($cb2phase_best{$cb}{1}) ? $cb2phase_best{$cb}{1} : 0;
-            my $max = exists($cb2phase_best{$cb}{2}) ? $cb2phase_best{$cb}{2} : 0;
+            my $min = exists($cb2phase_best{$cb}{1}) ? $cb2phase_best{$cb}{1} : 0; 
+            my $max = exists($cb2phase_best{$cb}{2}) ? $cb2phase_best{$cb}{2} : 0; 
             $total += $min + $max;
             ( $min, $max ) = ( $max, $min ) if $min > $max;
             next unless $max;
@@ -470,7 +482,7 @@ $pm->wait_all_children;                            # NEW: PARENT waits
         foreach my $ele ( sort {$phased_pos[$a]<=>$phased_pos[$b]} ( 0 .. $#global_best_dir ) ) {
             my $pos = $phased_pos[$ele];
             my $x1_allele = $global_best_dir[$ele] == 0 ? 'Unk' : $global_best_dir[$ele] == 1 ? 'Ref' : $global_best_dir[$ele] == -1 ? 'Alt' : 'Err';
-            print FVCF join( "\t", $chromosome, $pos, $snp_info{$pos}{'rs'}, $snp_info{$pos}{'ref'}, $snp_info{$pos}{'alt'}, scalar(keys %{$umis{$pos}{1}})+scalar(keys %{$umis{$pos}{2}}), 'PASS', 'X1A='.$x1_allele.';AD='.scalar(keys %{$umis{$pos}{1}}).','.scalar(keys %{$umis{$pos}{2}}) ),"\n";
+            print FVCF join( "\t", $chromosome, $pos, $snp_info{$pos}{'rs'}, $snp_info{$pos}{'ref'}, $snp_info{$pos}{'alt'}, scalar(keys %{$umis{$pos}{1}})+scalar(keys %{$umis{$pos}{2}}), 'PASS', 'X1A='.$x1_allele.';AD='.scalar(keys %{$umis{$pos}{1}}).','.scalar(keys %{$umis{$pos}{2}}) ),"\n";  
         }
         close FVCF;
 
@@ -497,15 +509,15 @@ $pm->wait_all_children;                            # NEW: PARENT waits
             elsif ( $hap1 >= 2 and $hap1/($hap1+$hap2) >= 0.9 ) {
                 $total1++;
                 $hap = 'X1';
-            }
+            } 
             elsif ( $hap2 >= 2 and $hap2/($hap1+$hap2) >= 0.9 ) {
                 $total2++;
                 $hap = 'X2';
-            }
+            } 
             elsif ( $hap1 > 0 and $hap2>0 ) {
                 $total3++;
                 $hap = 'Both';
-            }
+            } 
             else {
                 $total4++;
                 $hap = 'Low_coverage';
@@ -516,12 +528,14 @@ $pm->wait_all_children;                            # NEW: PARENT waits
         my $grand_total = $total0+$total1+$total2+$total3+$total4;
 
         warn "    Outputing summary...\n";
-        printf FLOG "X1 cells    : %5d( %3.2f %% )\n", $total1, 100*$total1/$grand_total;
-        printf FLOG "X2 cells    : %5d( %3.2f %% )\n", $total2, 100*$total2/$grand_total;
-        printf FLOG "Both X      : %5d( %3.2f %% )\n", $total3, 100*$total3/$grand_total;
-        printf FLOG "LowCoverage : %5d( %3.2f %% )\n", $total4, 100*$total4/$grand_total;
-        printf FLOG "Unknown     : %5d( %3.2f %% )\n", $total0, 100*$total0/$grand_total;
+        open FLOG, '>>', $sample.'_chr'.$chromosome.'_XCISE_summary.txt'; # ensure totals appended if loop repeats
+        printf FLOG "X1 cells    : %5d( %3.2f %% )\n", $total1, $grand_total ? 100*$total1/$grand_total : 0;
+        printf FLOG "X2 cells    : %5d( %3.2f %% )\n", $total2, $grand_total ? 100*$total2/$grand_total : 0;
+        printf FLOG "Both X      : %5d( %3.2f %% )\n", $total3, $grand_total ? 100*$total3/$grand_total : 0;
+        printf FLOG "LowCoverage : %5d( %3.2f %% )\n", $total4, $grand_total ? 100*$total4/$grand_total : 0;
+        printf FLOG "Unknown     : %5d( %3.2f %% )\n", $total0, $grand_total ? 100*$total0/$grand_total : 0;
         close FLOG;
+
         warn "    X1/X2/Both/LowC/Unknown cells: ", join( ' / ', $total1, $total2, $total3, $total4, $total0 ), "\n";
         warn "    Switching X1 and X2, so that there are more X2 cells than X1 cells ...\n" if $total1 > $total2;
 
