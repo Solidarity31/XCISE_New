@@ -13,14 +13,7 @@ die <- function(msg, usage = NULL) {
   quit(status = 1)
 }
 
-usage <- paste0(
-  "Usage: Rscript ", basename(sys.frame(1)$ofile %||% "xcise_runner.R"),
-  " -o <output_prefix> -s <vcf_file> -b <bam1> [ -b <bam2> ... ] ",
-  "[-r <chromosome>] [-t <tries>] [-u <min_umis>] [-m <min_maf>] ",
-  "[-p <penalty>] [-j <jobs>] [-samthreads <N>] [-seed <int>] ",
-  "[-pretrain] [-pre_cap <N>] [-pre_wmin <W>] [-pre_tieskip] ",
-  "[-sm] [-ms <N>] [-x] [-i]"
-)
+usage <- "Usage: Rscript xcise_runner.R -o <output_prefix> -s <vcf_file> -b <bam1> [ -b <bam2> ... ] [-r <chromosome>] [-t <tries>] [-u <min_umis>] [-m <min_maf>] [-p <penalty>] [-j <jobs>] [-samthreads <N>] [-seed <int>] [-pretrain] [-pre_cap <N>] [-pre_wmin <W>] [-pre_tieskip] [-sm] [-ms <N>] [-x] [-i]"
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
