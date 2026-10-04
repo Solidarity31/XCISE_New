@@ -267,7 +267,7 @@ EXCISE is a derivative of XCISE. If you use EXCISE in your work, **please cite t
 
 and acknowledge this repository:
 
-> **EXCISE:** Zhuang Z. *EXCISE — An Enhanced XCISE Pipeline.* GitHub: <https://github.com/solidarity31/xcise_new>
+> **EXCISE:** Zhuang Z. *EXCISE — An Enhanced XCISE Pipeline.* GitHub: <https://github.com/Solidarity31/XCISE_New>
 
 <details>
 <summary>BibTeX</summary>
