@@ -1,10 +1,6 @@
 # EXCISE — *An Enhanced XCISE Pipeline*
 
 <p align="center">
-  <img src="docs/excise_banner.png" alt="EXCISE pipeline overview" width="900"/>
-</p>
-
-<p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
   <img src="https://img.shields.io/badge/language-Perl%20%7C%20R-blue.svg" alt="Language"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
@@ -14,20 +10,18 @@
 
 <p align="center">
   <b>Cell-level X chromosome inactivation inference from allele-specific single-cell RNA-seq data</b><br/>
-  Built on the original <a href="https://github.com/danlimsk/XCISE">XCISE</a> framework · WASP-corrected · MCMC-optimized · Parallelized
+  Built on the original <a href="https://github.com/Vityay/XCISE">XCISE</a> framework · WASP-corrected · MCMC-optimized · Parallelized
 </p>
 
 ---
 
 ## Overview
 
-**EXCISE** extends the [XCISE](https://github.com/danlimsk/XCISE) framework for inferring X chromosome inactivation (XCI) states at single-cell resolution. Starting from allele-specific BAM files and heterozygous SNV calls on the X chromosome, EXCISE assigns each cell barcode to one of five XCI categories: `X1`, `X2`, `Both`, `Low_coverage`, or `Unknown`.
+**EXCISE** extends the [XCISE](https://github.com/Vityay/XCISE) framework for inferring X chromosome inactivation (XCI) states at single-cell resolution. Starting from allele-specific BAM files and heterozygous SNV calls on the X chromosome, EXCISE assigns each cell barcode to one of five XCI categories: `X1`, `X2`, `Both`, `Low_coverage`, or `Unknown`.
+
+XCISE (*XCI calling from Single cell Expression data*) was developed by Henning, Rust, Dijksterhuis, Eggen & Guryev ([bioRxiv 2024](https://doi.org/10.1101/2024.08.29.610317); code: [Vityay/XCISE](https://github.com/Vityay/XCISE)). `xcise_mt.pl` and `xcise_mcmc.pl` are direct modifications of the original `xcise.pl`, and `excise.pl` is derived from them.
 
 Key advances over the original XCISE include **MCMC-based haplotype optimization** with simulated annealing, **observation-based co-segregation seeding**, **parallel multi-try execution**, and a suite of downstream utilities for annotation and inter-run comparison.
-
-<p align="center">
-  <img src="docs/excise_workflow.png" alt="EXCISE workflow schematic" width="750"/>
-</p>
 
 ---
 
@@ -57,12 +51,9 @@ EXCISE/
 ├── xcise_mt.pl                  # Greedy multi-try variant
 ├── xcise_mcmc.pl                # MCMC + co-segregation graph variant
 ├── compare_bc2xci.R             # Compare two bc2xci outputs (kappa, Bowker test)
+├── Comparison between two outputs.R  # Ad hoc pairwise comparison of two bc2xci files
 ├── annotation.R                 # Annotate XCISE VCF output with GTF gene models
-├── annotate_vcf_with_gtf.R      # Auto-download GTF (GENCODE v46 / Ensembl 113)
-├── tutorials/
-│   └── example_run.sh           # End-to-end example
-└── docs/
-    └── excise_banner.png        # Pipeline overview figure
+└── annotate_vcf_with_gtf.R      # Auto-download GTF (GENCODE v46 / Ensembl 113)
 ```
 
 ---
@@ -104,6 +95,8 @@ BiocManager::install("rtracklayer")   # optional but recommended
 | GTF file | Gene annotation for VCF annotation step (GENCODE v46 auto-downloaded if omitted) |
 
 > **Note:** WASP re-mapping is required upstream. Reads without the `vW:i:1` tag are silently skipped.
+>
+> EXCISE does not re-implement the upstream preprocessing. Follow the step-by-step guide in the [original XCISE README](https://github.com/Vityay/XCISE#readme) (STAR/STARsolo alignment → BCFtools variant calling → common-SNV filtering → `vcf4wasp.pl` → STAR in WASP mode with `--waspOutputMode SAMtag --outSAMattributes vA vG ...`) to produce compatible BAM and VCF inputs.
 
 ---
 
@@ -266,17 +259,61 @@ Outputs: per-SNV gene name, biotype, and nearest upstream/downstream gene with d
 
 ## Citation
 
-If you use EXCISE in your work, please cite the original XCISE paper and acknowledge this repository:
+EXCISE is a derivative of XCISE. If you use EXCISE in your work, **please cite the original XCISE paper**:
 
-> **XCISE:** [original citation here]
+> Henning RH, Rust TM, Dijksterhuis K, Eggen BJL, Guryev V. **Single-cell X-chromosome inactivation analysis links biased chimerism to differential gene expression and epigenetic erosion.** *bioRxiv* (2024). doi: [10.1101/2024.08.29.610317](https://doi.org/10.1101/2024.08.29.610317)
 >
-> **EXCISE (this work):** [your citation here]
+> Original code: <https://github.com/Vityay/XCISE>
+
+and acknowledge this repository:
+
+> **EXCISE:** Zhuang Z. *EXCISE — An Enhanced XCISE Pipeline.* GitHub: <https://github.com/solidarity31/xcise_new>
+
+<details>
+<summary>BibTeX</summary>
+
+```bibtex
+@article{henning2024xcise,
+  title   = {Single-cell X-chromosome inactivation analysis links biased chimerism
+             to differential gene expression and epigenetic erosion},
+  author  = {Henning, Robert H. and Rust, Thomas M. and Dijksterhuis, Kasper and
+             Eggen, Bart J. L. and Guryev, Victor},
+  journal = {bioRxiv},
+  year    = {2024},
+  doi     = {10.1101/2024.08.29.610317}
+}
+
+@article{wang2025femxpress,
+  title   = {FemXpress: Systematic Analysis of X Chromosome Inactivation
+             Heterogeneity in Female Single-Cell RNA-Seq Samples},
+  author  = {Wang, Xin and Ma, Yingke and Li, Fan and Cui, Wentao and Pan, Tianshi and
+             Wang, Siqi and Ma, Sinan and Shan, Qingtong and Liu, Chao and Wang, Yukai and
+             Zhang, Ying and Zhou, Yuanchun and Li, Wei and Wang, Pengfei and
+             Zhou, Qi and Feng, Guihai},
+  journal = {Advanced Science},
+  volume  = {12},
+  number  = {35},
+  year    = {2025},
+  doi     = {10.1002/advs.202504754}
+}
+```
+
+</details>
+
+---
+
+## Related Tools
+
+- **[XCISE](https://github.com/Vityay/XCISE)** — the original pipeline that EXCISE extends (Henning *et al.*, bioRxiv 2024).
+- **FemXpress** — an independent tool that uses X-linked SNPs to group cells in female scRNA-seq data by the parental origin of the inactivated X chromosome, without requiring parental genotypes, and additionally identifies genes that escape X inactivation. Wang X, *et al.* **FemXpress: Systematic Analysis of X Chromosome Inactivation Heterogeneity in Female Single-Cell RNA-Seq Samples.** *Advanced Science* 12(35) (2025). doi: [10.1002/advs.202504754](https://doi.org/10.1002/advs.202504754)
+
+EXCISE and FemXpress address the same biological question (per-cell XCI state from allele-specific scRNA-seq) with different algorithms; running both on the same sample and comparing per-cell assignments (e.g. with `compare_bc2xci.R` after reformatting) is a useful orthogonal check. If you use FemXpress, please cite its paper.
 
 ---
 
 ## Acknowledgements
 
-EXCISE is built directly on the conceptual and algorithmic foundation of the original **XCISE** framework. All core biological logic — allele-specific UMI phasing, the concordance-minus-discordance scoring function, and the X1/X2 classification scheme — originates with XCISE. This repository extends that foundation with improved optimization, initialization, and downstream analysis capabilities.
+EXCISE is built directly on the conceptual and algorithmic foundation of the original **[XCISE](https://github.com/Vityay/XCISE)** framework by Henning, Rust, Dijksterhuis, Eggen & Guryev. All core biological logic — allele-specific UMI phasing, the concordance-minus-discordance scoring function, and the X1/X2 classification scheme — originates with XCISE. This repository extends that foundation with improved optimization, initialization, and downstream analysis capabilities.
 
 ---
 
