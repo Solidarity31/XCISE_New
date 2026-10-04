@@ -1,6 +1,10 @@
 #!/usr/bin/perl -w
 use strict;
 
+# Derived from xcise.pl of XCISE (https://github.com/Vityay/XCISE).
+# Please cite: Henning RH, Rust TM, Dijksterhuis K, Eggen BJL, Guryev V.
+#   bioRxiv (2024). doi:10.1101/2024.08.29.610317
+
 # Minimal deps for multi-process tries and temp dir
 use Parallel::ForkManager;
 use File::Temp qw(tempdir);
