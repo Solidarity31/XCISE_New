@@ -1,5 +1,9 @@
 #!/usr/bin/perl -w
 use strict;
+
+# Derived from xcise.pl of XCISE (https://github.com/Vityay/XCISE).
+# Please cite: Henning RH, Rust TM, Dijksterhuis K, Eggen BJL, Guryev V.
+#   bioRxiv (2024). doi:10.1101/2024.08.29.610317
 use Parallel::ForkManager;       # for multi-process parallel tries (-j)
 use File::Temp qw(tempdir);      # temp dir to collect child results
 use List::Util qw(shuffle min max);
