@@ -3,3 +3,4 @@ n_cells	n_snvs	seed	n_reads	perl_s	python_s	python_optimiser_s	speedup	bc2xci_id
 1000	2000	12	60110	12.40	4.70	0.04	2.64	0	simulated
 1000	2000	13	60539	10.24	4.90	0.04	2.09	0	simulated
 2000	2000	11	119696	21.02	5.56	0.04	3.78	1	simulated
+2000	2000	12	120718	24.43	5.11	0.05	4.78	0	simulated
