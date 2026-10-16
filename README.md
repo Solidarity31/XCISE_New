@@ -65,6 +65,9 @@ Key advances over the original XCISE include **MCMC-based haplotype optimization
 ```
 EXCISE/
 ├── excise1.5.pl                 # EXCISE v1.5: greedy multi-try + escape/monoallelic handling (latest)
+├── excise15.py                  # Fast Python/numba port of excise1.5.pl (same flags and outputs)
+├── extract_bc2xci_overlap.R     # Cells shared by two bc2xci files with each run's label
+├── tests/simulate_xci_data.py   # Simulated WASP BAM + VCF with known truth (testing/benchmarking)
 ├── excise.pl                    # MCMC + simulated annealing + pretraining
 ├── xcise_mt.pl                  # Greedy multi-try variant
 ├── xcise_mcmc.pl                # MCMC + co-segregation graph variant
@@ -149,6 +152,26 @@ The pipeline runs these stages in order:
 6. **Output.** Haplotype labels are swapped if needed so that `#X2 cells ≥ #X1 cells`, and all output files are written.
 
 > `excise1.5.pl` does not accept the MCMC flags (`-cs`, `-T0`, `-Tmin`, `-blocksize`, `-blocktype`) or the `xcise_mcmc.pl` graph flags. Any unknown flag aborts with `Unexpected/incomplete parameter`.
+
+### Fast Python port (`excise15.py`)
+
+`excise15.py` runs the same algorithm as `excise1.5.pl`, with the same flags and the same output files, but much faster:
+
+```bash
+pip install numpy numba pysam
+python3 excise15.py -o SAMPLE_NAME -s hets_chrX.vcf.gz -b sample_WASP.bam \
+  -r X -t 100 -j 8 -seed 42 -pretrain -ph
+```
+
+The main speedup is algorithmic. After each single-SNV move, `excise1.5.pl` rescores the run by looping over **every cell**. The score is a sum of per-cell terms, so `excise15.py` re-evaluates only the cells that cover the moved SNV. The resulting score is identical, but each move is far cheaper. The hill-climber, pretraining graph and BFS are compiled with numba. BAM evidence is packed once into flat integer arrays, so the inner loops no longer split `"umi\tcb"` strings. BAM input is read with `pysam`, so no `samtools` binary is needed, but the BAM must be indexed.
+
+Validation on simulated data (`tests/simulate_xci_data.py`):
+
+- When both scripts reach the same optimum, all five output files are byte-identical to `excise1.5.pl`. This holds with and without `-pretrain`, and with `-ph`.
+- Given the same optimizer result, Phase 2, both Phase-3 passes and all output writers match exactly, including on sparse data with many monoallelic SNVs.
+- On 8,000 cells, 2,000 SNVs and 0.48 M reads (`-t 4 -j 4 -pretrain`), the run took 8.5 s instead of 95 s, with identical `bc2xci` output. The optimizer took 0.05 s, so most of the remaining time is BAM reading and a one-off ~3 s JIT compile. The gap grows with `-t` and data size.
+
+Results are not bit-identical to the Perl script for the same `-seed`, because the RNGs differ and Perl iterates hashes in random order. On hard, sparse data, individual tries can therefore reach different local optima, as they do between two Perl runs with different seeds.
 
 ### MCMC pipeline (`excise.pl`)
 
