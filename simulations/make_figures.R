@@ -6,12 +6,14 @@
 #
 # Inputs  (written by run_speed_benchmark.py / run_xci_skew_sweep.py):
 #   simulations/results/speed_benchmark.tsv
-#   simulations/results/skew_replicates.tsv
-#   simulations/results/skew_snv_level.tsv.gz
+#   simulations/results/skew_indep_replicates.tsv   (independent seeds; Figs 2-5)
+#   simulations/results/skew_indep_snv_level.tsv.gz
+#   simulations/results/skew_replicates.tsv         (paired control; summary only)
 # Outputs:
 #   simulations/figures/fig{1..5}_*.pdf / .png (300 dpi)
 #   simulations/results/fig{1..5}_*_data.csv   (exact numbers plotted)
-#   simulations/results/skew_summary.tsv       (mean / SD / range per condition)
+#   simulations/results/skew_indep_summary.tsv, skew_paired_summary.tsv
+#                                              (mean / SD / range per condition)
 #
 # Every plotted value is read from the result files; nothing is hard-coded.
 
@@ -132,25 +134,32 @@ fig1 <- (p1a | p1b) + plot_layout(widths = c(1.25, 1)) +
   plot_annotation(
     tag_levels = "A",
     caption = sprintf(paste0(
-      "Both tools: -t 4 -j 4 -pretrain, run sequentially on the same simulated BAM. Python time includes BAM reading ",
-      "and one-off numba compilation.\nbc2xci output byte-identical between Perl and Python in %d of %d runs."),
-      sum(speed$bc2xci_identical), nrow(speed)))
+      "Both tools: -t 4 -j 4 -pretrain, run sequentially on the same simulated BAM; %d datasets. Python time includes ",
+      "BAM reading and one-off numba compilation.\nbc2xci byte-identical in %d of %d runs; elsewhere the stochastic tries ",
+      "reached different local optima (median %d, max %d of %s cells labelled differently)."),
+      nrow(speed), sum(speed$bc2xci_identical), nrow(speed),
+      as.integer(median(speed$cells_label_differs)), max(speed$cells_label_differs),
+      comma(max(speed$n_cells))))
 save_fig(fig1, "fig1_runtime_perl_vs_python", 180, 95)
 
 ## ---- skew sweep data ---------------------------------------------------------
-rep <- read_tsv(file.path(res_dir, "skew_replicates.tsv"), show_col_types = FALSE) %>%
+read_rep <- function(tag) read_tsv(file.path(res_dir, paste0(tag, "_replicates.tsv")),
+                                   show_col_types = FALSE) %>%
   mutate(ratio = factor(ratio, ratio_levels))
+rep <- read_rep("skew_indep")          # main analysis: independent seeds
+rep_paired <- read_rep("skew")         # control: common random numbers
 n_rep <- rep %>% count(ratio)
-n_lab <- sprintf("%d replicates per ratio; %d cells (5%% Both), %d SNVs",
+n_lab <- sprintf("%d independent replicates per ratio; %d cells (5%% Both), %d SNVs",
                  max(n_rep$n), rep$n_cells[1], 1000L)
 
 metrics <- c("hap_acc", "snv_unassigned", "snv_unassigned_nonesc", "escape_unassigned",
              "cell_acc", "cell_acc_informative", "minority_recall", "minority_precision",
              "majority_recall", "recall_Both", "macro_recall", "informative_recovery",
              "mono_recovery", "est_minority_share_of_mono", "wall_s", "optimiser_s")
-summary_tbl <- bind_rows(lapply(metrics, function(m) summ(rep, m) %>% mutate(metric = m))) %>%
+summ_all <- function(df) bind_rows(lapply(metrics, function(m) summ(df, m) %>% mutate(metric = m))) %>%
   select(metric, ratio, n_rep, mean, sd, min, max) %>% arrange(metric, ratio)
-write_tsv(summary_tbl, file.path(res_dir, "skew_summary.tsv"))
+write_tsv(summ_all(rep), file.path(res_dir, "skew_indep_summary.tsv"))
+write_tsv(summ_all(rep_paired), file.path(res_dir, "skew_paired_summary.tsv"))
 
 # replicate points + mean +/- SD, one or two metrics per panel
 rep_panel <- function(df, vars, labels, ylab, title, ylim = NULL) {
@@ -224,7 +233,7 @@ fig4 <- f4$plot + labs(caption = paste0(n_lab, ".\nSmall points: replicates; lar
 save_fig(fig4, "fig4_informative_cell_recovery", 110, 90)
 
 ## ---- Figure 5: haplotypes along chrX ------------------------------------------
-snv <- read_tsv(file.path(res_dir, "skew_snv_level.tsv.gz"), show_col_types = FALSE,
+snv <- read_tsv(file.path(res_dir, "skew_indep_snv_level.tsv.gz"), show_col_types = FALSE,
                 col_types = cols(inferred_x1_allele = col_character())) %>%
   mutate(ratio = factor(ratio, ratio_levels))
 sel <- snv %>% filter(ratio %in% c("50:50", "99:1"), rep == 1)

@@ -9,15 +9,23 @@ Usage (from the repository root):
 Fixed across conditions (only the X1:X2 ratio changes):
   2000 cells, 1000 SNVs, 40 reads/cell (uniform 20-60), 3-25 expressed
   SNVs per cell, allelic noise 0.02, 5% escape SNVs, Both = 5% of ALL cells,
-  exact state counts. Replicate k uses simulation seed 100+k for every
-  ratio (common random numbers) and the same EXCISE -seed.
+  exact state counts.
+Seeds (--design):
+  paired       replicate k uses seed 100+k for every ratio (common random
+               numbers): reads per cell are identical across ratios, so only
+               the X1/X2 labels of the monoallelic cells change. A control for
+               the effect of skew alone; not independent between ratios.
+  independent  every ratio x replicate gets its own seed 10000+100*X1%+k,
+               so replicates are independent within and between ratios.
+  The EXCISE -seed equals the simulation seed.
 EXCISE settings: -t 100 -j <jobs> -seed <seed> -pretrain (README defaults).
 
 Existing simulations / runs are reused, never overwritten.
 Outputs:
-  simulations/data/skew/x1_<pct>/rep<k>/        simulated data + EXCISE run
-  simulations/results/skew_replicates.tsv       one row per run
-  simulations/results/skew_snv_level.tsv.gz     per-SNV truth vs inference
+  simulations/data/<tag>/x1_<pct>/rep<k>/        simulated data + EXCISE run
+  simulations/results/<tag>_replicates.tsv       one row per run
+  simulations/results/<tag>_snv_level.tsv.gz     per-SNV truth vs inference
+  with <tag> = skew (paired) or skew_indep (independent)
 """
 import argparse
 import gzip
@@ -42,14 +50,16 @@ def main():
     ap.add_argument("--reps", type=int, default=10)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--tries", type=int, default=100)
+    ap.add_argument("--design", choices=("paired", "independent"), default="paired")
     a = ap.parse_args()
+    tag = "skew" if a.design == "paired" else "skew_indep"
     res_dir = os.path.join(HERE, "results")
     os.makedirs(res_dir, exist_ok=True)
     rows, snv_rows = [], []
     for x1, x2 in RATIOS:
         for rep in range(1, a.reps + 1):
-            seed = 100 + rep
-            d = os.path.join(HERE, "data", "skew", "x1_%02d" % x1, "rep%d" % rep)
+            seed = 100 + rep if a.design == "paired" else 10000 + 100 * x1 + rep
+            d = os.path.join(HERE, "data", tag, "x1_%02d" % x1, "rep%d" % rep)
             if not os.path.exists(os.path.join(d, "sim.bam")):
                 subprocess.check_call(
                     [sys.executable, os.path.join(ROOT, "tests", "simulate_xci_data.py"), d,
@@ -89,12 +99,12 @@ def main():
                      m["n_minority"], m["minority_recall"], wall), flush=True)
 
     keys = list(rows[0].keys())
-    with open(os.path.join(res_dir, "skew_replicates.tsv"), "w") as fh:
+    with open(os.path.join(res_dir, tag + "_replicates.tsv"), "w") as fh:
         fh.write("\t".join(keys) + "\n")
         for r in rows:
             fh.write("\t".join(("%.6g" % r[k]) if isinstance(r[k], float) else str(r[k])
                                for k in keys) + "\n")
-    with gzip.open(os.path.join(res_dir, "skew_snv_level.tsv.gz"), "wt") as fh:
+    with gzip.open(os.path.join(res_dir, tag + "_snv_level.tsv.gz"), "wt") as fh:
         fh.write("ratio\trep\tpos\ttrue_x1_allele\tescape\tinferred_x1_allele\tmono\tdepth\tstatus\n")
         for r in snv_rows:
             fh.write("\t".join(str(x) for x in r) + "\n")

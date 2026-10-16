@@ -94,11 +94,30 @@ def main():
             rows.append(r)
             print("cells=%d seed=%d  perl=%.1fs python=%.1fs  speedup=%.1fx identical=%s"
                   % (n, s, tpl, tpy, tpl / tpy, same), flush=True)
-            with open(out, "w") as fh:  # rewrite after every run (resumable)
-                keys = list(rows[0].keys())
-                fh.write("\t".join(keys) + "\n")
-                for x in rows:
-                    fh.write("\t".join(str(x[k]) for k in keys) + "\n")
+            write_rows(out, rows)
+    # Output agreement beyond byte identity: both tools are stochastic, so on
+    # sparse data their best tries can reach different local optima.
+    for r in rows:
+        d = os.path.join(HERE, "data", "speed", "c%s_s%s" % (r["n_cells"], r["seed"]))
+        best, lab = {}, {}
+        for sub in ("perl", "python"):
+            with open(os.path.join(d, sub, "b_chrX_XCISE_summary.txt")) as fh:
+                best[sub] = re.match(r"Best score\s+:\s+(\S+)", fh.readline()).group(1)
+            with open(os.path.join(d, sub, "b_chrX_XCISE_bc2xci.txt")) as fh:
+                lab[sub] = dict((l.split("\t")[0], l.rstrip("\n").split("\t")[3]) for l in fh)
+        r["perl_best_score"], r["python_best_score"] = best["perl"], best["python"]
+        r["cells_label_differs"] = sum(1 for cb in lab["perl"] if lab["python"].get(cb) != lab["perl"][cb])
+    write_rows(out, rows)
+
+
+def write_rows(out, rows):
+    keys = list(rows[0].keys())
+    for x in rows:
+        keys += [k for k in x if k not in keys]
+    with open(out, "w") as fh:  # rewritten after every run (resumable)
+        fh.write("\t".join(keys) + "\n")
+        for x in rows:
+            fh.write("\t".join(str(x.get(k, "NA")) for k in keys) + "\n")
 
 
 if __name__ == "__main__":
