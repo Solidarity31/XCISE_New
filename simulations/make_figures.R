@@ -107,7 +107,7 @@ p1a <- ggplot(sp_long, aes(n_cells, seconds, colour = what, shape = what)) +
   geom_line(data = sp_mean, aes(linetype = what), linewidth = 0.5) +
   geom_point(size = 1.6, alpha = 0.85, position = position_jitter(width = 0.02, height = 0, seed = 1)) +
   geom_text(data = sp_fold, inherit.aes = FALSE,
-            aes(n_cells, perl * 1.9, label = sprintf("%.1f×", fold)),
+            aes(n_cells, perl * 1.9, label = sprintf("%.1fx", fold)),
             size = 2.5, colour = "black") +
   scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma) +
   scale_y_log10(labels = label_number(accuracy = 0.01, drop0trailing = TRUE),
@@ -117,7 +117,7 @@ p1a <- ggplot(sp_long, aes(n_cells, seconds, colour = what, shape = what)) +
   scale_linetype_manual(values = c("solid", "solid", "22")) +
   labs(x = "Cells (2,000 SNVs; ~60 reads per cell)", y = "Wall-clock time (s, log scale)",
        title = "Runtime", subtitle = "Numbers: mean speed-up of the full Python run over Perl") +
-  theme(legend.position = "bottom", legend.direction = "vertical")
+  theme(legend.position = c(0.02, 0.99), legend.justification = c(0, 1))
 
 p1b <- ggplot(speed, aes(n_cells, speedup)) +
   geom_hline(yintercept = 1, linewidth = 0.3, colour = col[["ink"]], linetype = "22") +
@@ -167,7 +167,7 @@ rep_panel <- function(df, vars, labels, ylab, title, ylim = NULL) {
     pivot_longer(all_of(vars), names_to = "metric", values_to = "value") %>%
     mutate(metric = factor(metric, vars, labels))
   s <- d %>% group_by(ratio, metric) %>%
-    summarise(mean = mean(value), sd = sd(value), .groups = "drop")
+    summarise(mean = mean(value), lo = min(value), hi = max(value), .groups = "drop")
   dodge <- if (length(vars) > 1) 0.45 else 0
   pal <- c(col[["python"]], col[["secondary"]])[seq_along(vars)]
   p <- ggplot(d, aes(ratio, value, colour = metric, shape = metric)) +
@@ -175,7 +175,7 @@ rep_panel <- function(df, vars, labels, ylab, title, ylim = NULL) {
                                                jitter.height = 0, seed = 2),
                size = 0.9, alpha = 0.45) +
     geom_errorbar(data = s, inherit.aes = FALSE,
-                  aes(ratio, ymin = mean - sd, ymax = mean + sd, colour = metric),
+                  aes(ratio, ymin = lo, ymax = hi, colour = metric),
                   width = 0.18, linewidth = 0.4, position = position_dodge(width = dodge)) +
     geom_point(data = s, aes(y = mean), size = 2, position = position_dodge(width = dodge)) +
     scale_colour_manual(values = pal) +
@@ -183,7 +183,7 @@ rep_panel <- function(df, vars, labels, ylab, title, ylim = NULL) {
     labs(x = "True X1:X2 ratio among monoallelic cells", y = ylab, title = title)
   if (!is.null(ylim)) p <- p + coord_cartesian(ylim = ylim)
   if (length(vars) == 1) p <- p + theme(legend.position = "none")
-  else p <- p + theme(legend.position = "bottom")
+  else p <- p + theme(legend.position = "bottom", legend.direction = "vertical")
   list(plot = p, data = d)
 }
 
@@ -191,13 +191,21 @@ rep_panel <- function(df, vars, labels, ylab, title, ylim = NULL) {
 f2a <- rep_panel(rep, "hap_acc", "Haplotype accuracy",
                  "Haplotype accuracy\n(phased non-escape SNVs, label-switch corrected)",
                  "Haplotype accuracy")
-f2b <- rep_panel(rep, c("snv_unassigned_nonesc", "escape_unassigned"),
-                 c("Non-escape SNVs left unassigned", "Escape SNVs left unassigned (expected)"),
-                 "Fraction of SNVs (X1A = Unk)", "Unassigned SNVs")
+f2a$plot <- f2a$plot +
+  scale_y_continuous(limits = c(min(0.95, min(rep$hap_acc)), 1), breaks = seq(0.95, 1, 0.01)) +
+  labs(subtitle = sprintf("All %d runs: accuracy %.4f-%.4f\n(%s-%s non-escape SNVs phased per run)",
+                          nrow(rep), min(rep$hap_acc), max(rep$hap_acc),
+                          comma(min(rep$snvs_phased_nonesc)), comma(max(rep$snvs_phased_nonesc))))
+rep_pct <- rep %>% mutate(unassigned_nonesc_pct = 100 * snv_unassigned_nonesc)
+f2b <- rep_panel(rep_pct, "unassigned_nonesc_pct", "Non-escape SNVs left unassigned",
+                 "Non-escape SNVs left unassigned (%)", "Unassigned SNVs")
+f2b$plot <- f2b$plot + scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.08))) +
+  labs(subtitle = sprintf("Escape SNVs left unassigned (desired outcome):\n%.0f-%.0f%% across runs",
+                          100 * min(rep$escape_unassigned), 100 * max(rep$escape_unassigned)))
 write_csv(bind_rows(f2a$data, f2b$data), file.path(res_dir, "fig2_haplotype_data.csv"))
 fig2 <- (f2a$plot | f2b$plot) +
   plot_annotation(tag_levels = "A", caption = paste0(
-    n_lab, ". Small points: replicates; large points and bars: mean ± SD.\n",
+    n_lab, ". Small points: replicates; large points and bars: mean and min-max range.\n",
     "Accuracy uses one global X1/X2 orientation per run, chosen from the SNV haplotypes ",
     "(EXCISE labels are arbitrary)."))
 save_fig(fig2, "fig2_haplotype_accuracy_vs_skew", 180, 90)
@@ -219,7 +227,7 @@ f3b$plot <- f3b$plot +
 write_csv(bind_rows(f3a$data, f3b$data), file.path(res_dir, "fig3_cell_assignment_data.csv"))
 fig3 <- (f3a$plot | f3b$plot) +
   plot_annotation(tag_levels = "A", caption = paste0(
-    n_lab, ". Small points: replicates; large points and bars: mean ± SD.\n",
+    n_lab, ". Small points: replicates; large points and bars: mean and min-max range.\n",
     "B: n = true minority (X2) cells per replicate; Low_coverage/Unknown calls count as errors. ",
     "Labels mapped to truth with the global orientation from Fig. 2."))
 save_fig(fig3, "fig3_cell_accuracy_vs_skew", 180, 92)
@@ -229,7 +237,7 @@ f4 <- rep_panel(rep, c("informative_recovery", "mono_recovery"),
                 c("All cells called X1, X2 or Both", "True X1/X2 cells called X1 or X2"),
                 "Proportion of cells recovered", "Informative cell recovery")
 write_csv(f4$data, file.path(res_dir, "fig4_informative_recovery_data.csv"))
-fig4 <- f4$plot + labs(caption = paste0(n_lab, ".\nSmall points: replicates; large points and bars: mean ± SD."))
+fig4 <- f4$plot + labs(caption = paste0(n_lab, ".\nSmall points: replicates; large points and bars: mean and min-max range."))
 save_fig(fig4, "fig4_informative_cell_recovery", 110, 90)
 
 ## ---- Figure 5: haplotypes along chrX ------------------------------------------
@@ -272,14 +280,13 @@ p5 <- ggplot() +
   geom_segment(data = tracks, aes(x = pos / 1e6, xend = pos / 1e6,
                                   y = as.numeric(track) - 0.38, yend = as.numeric(track) + 0.38,
                                   colour = allele), linewidth = 0.18) +
-  geom_point(data = issues, aes(pos / 1e6, 0, shape = issue, fill = issue),
-             colour = col[["incorrect"]], size = 1.6, stroke = 0.5) +
+  geom_point(data = issues, aes(pos / 1e6, 0, shape = issue),
+             colour = issue_cols[as.character(issues$issue)], size = 1.8, stroke = 0.6) +
   geom_text(data = counts, aes(x = 0, y = 3.05, label = lab), hjust = 0, size = 2.3,
             colour = col[["ink"]]) +
   facet_wrap(~ratio, ncol = 1, labeller = labeller(ratio = function(x) paste0("X1:X2 = ", x, " (replicate 1)"))) +
   scale_colour_manual(values = allele_cols, drop = FALSE) +
   scale_shape_manual(values = issue_shapes, drop = FALSE) +
-  scale_fill_manual(values = issue_cols, drop = FALSE, guide = "none") +
   scale_y_continuous(breaks = c(0, 1, 2), labels = c("Errors /\nunassigned", "EXCISE", "Truth"),
                      limits = c(-0.6, 3.3), expand = c(0, 0)) +
   scale_x_continuous(expand = expansion(mult = 0.01)) +
@@ -290,7 +297,8 @@ p5 <- ggplot() +
                         "Bottom row marks every SNV that is wrongly oriented, left unassigned, ",
                         "or removed by the read-depth filter.")) +
   guides(colour = guide_legend(override.aes = list(linewidth = 1.5), nrow = 2, order = 1),
-         shape = guide_legend(nrow = 2, order = 2)) +
+         shape = guide_legend(nrow = 2, order = 2,
+                              override.aes = list(colour = unname(issue_cols)))) +
   theme(legend.position = "bottom", panel.grid.major.y = element_blank(),
         axis.ticks.y = element_blank(), axis.line.y = element_blank())
 save_fig(p5, "fig5_haplotype_tracks_chrX", 180, 110)

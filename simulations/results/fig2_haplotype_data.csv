@@ -1,0 +1,121 @@
+ratio,rep,metric,value
+50:50,1,Haplotype accuracy,1
+50:50,2,Haplotype accuracy,1
+50:50,3,Haplotype accuracy,1
+50:50,4,Haplotype accuracy,1
+50:50,5,Haplotype accuracy,1
+50:50,6,Haplotype accuracy,1
+50:50,7,Haplotype accuracy,1
+50:50,8,Haplotype accuracy,1
+50:50,9,Haplotype accuracy,1
+50:50,10,Haplotype accuracy,1
+55:45,1,Haplotype accuracy,1
+55:45,2,Haplotype accuracy,1
+55:45,3,Haplotype accuracy,1
+55:45,4,Haplotype accuracy,1
+55:45,5,Haplotype accuracy,1
+55:45,6,Haplotype accuracy,1
+55:45,7,Haplotype accuracy,1
+55:45,8,Haplotype accuracy,1
+55:45,9,Haplotype accuracy,1
+55:45,10,Haplotype accuracy,1
+70:30,1,Haplotype accuracy,1
+70:30,2,Haplotype accuracy,1
+70:30,3,Haplotype accuracy,1
+70:30,4,Haplotype accuracy,1
+70:30,5,Haplotype accuracy,1
+70:30,6,Haplotype accuracy,1
+70:30,7,Haplotype accuracy,1
+70:30,8,Haplotype accuracy,1
+70:30,9,Haplotype accuracy,1
+70:30,10,Haplotype accuracy,1
+90:10,1,Haplotype accuracy,1
+90:10,2,Haplotype accuracy,1
+90:10,3,Haplotype accuracy,1
+90:10,4,Haplotype accuracy,1
+90:10,5,Haplotype accuracy,1
+90:10,6,Haplotype accuracy,1
+90:10,7,Haplotype accuracy,1
+90:10,8,Haplotype accuracy,1
+90:10,9,Haplotype accuracy,1
+90:10,10,Haplotype accuracy,1
+95:5,1,Haplotype accuracy,1
+95:5,2,Haplotype accuracy,1
+95:5,3,Haplotype accuracy,1
+95:5,4,Haplotype accuracy,1
+95:5,5,Haplotype accuracy,1
+95:5,6,Haplotype accuracy,1
+95:5,7,Haplotype accuracy,1
+95:5,8,Haplotype accuracy,1
+95:5,9,Haplotype accuracy,1
+95:5,10,Haplotype accuracy,1
+99:1,1,Haplotype accuracy,1
+99:1,2,Haplotype accuracy,1
+99:1,3,Haplotype accuracy,1
+99:1,4,Haplotype accuracy,1
+99:1,5,Haplotype accuracy,1
+99:1,6,Haplotype accuracy,1
+99:1,7,Haplotype accuracy,1
+99:1,8,Haplotype accuracy,1
+99:1,9,Haplotype accuracy,1
+99:1,10,Haplotype accuracy,1
+50:50,1,Non-escape SNVs left unassigned,0.315789
+50:50,2,Non-escape SNVs left unassigned,0.8421049999999999
+50:50,3,Non-escape SNVs left unassigned,0.315789
+50:50,4,Non-escape SNVs left unassigned,0.315789
+50:50,5,Non-escape SNVs left unassigned,0.315789
+50:50,6,Non-escape SNVs left unassigned,0.210526
+50:50,7,Non-escape SNVs left unassigned,0.210526
+50:50,8,Non-escape SNVs left unassigned,0.736842
+50:50,9,Non-escape SNVs left unassigned,0.631579
+50:50,10,Non-escape SNVs left unassigned,0
+55:45,1,Non-escape SNVs left unassigned,0.210526
+55:45,2,Non-escape SNVs left unassigned,0.526316
+55:45,3,Non-escape SNVs left unassigned,0.210526
+55:45,4,Non-escape SNVs left unassigned,0.526316
+55:45,5,Non-escape SNVs left unassigned,0.736842
+55:45,6,Non-escape SNVs left unassigned,0.210526
+55:45,7,Non-escape SNVs left unassigned,0.526316
+55:45,8,Non-escape SNVs left unassigned,0.105263
+55:45,9,Non-escape SNVs left unassigned,0.42105299999999996
+55:45,10,Non-escape SNVs left unassigned,0.526316
+70:30,1,Non-escape SNVs left unassigned,0.736842
+70:30,2,Non-escape SNVs left unassigned,0.315789
+70:30,3,Non-escape SNVs left unassigned,0.526316
+70:30,4,Non-escape SNVs left unassigned,0.105263
+70:30,5,Non-escape SNVs left unassigned,0.631579
+70:30,6,Non-escape SNVs left unassigned,0.526316
+70:30,7,Non-escape SNVs left unassigned,0.315789
+70:30,8,Non-escape SNVs left unassigned,0.315789
+70:30,9,Non-escape SNVs left unassigned,0.42105299999999996
+70:30,10,Non-escape SNVs left unassigned,0.210526
+90:10,1,Non-escape SNVs left unassigned,0.42105299999999996
+90:10,2,Non-escape SNVs left unassigned,0.210526
+90:10,3,Non-escape SNVs left unassigned,0.315789
+90:10,4,Non-escape SNVs left unassigned,0.631579
+90:10,5,Non-escape SNVs left unassigned,0.105263
+90:10,6,Non-escape SNVs left unassigned,0.42105299999999996
+90:10,7,Non-escape SNVs left unassigned,0.631579
+90:10,8,Non-escape SNVs left unassigned,0.105263
+90:10,9,Non-escape SNVs left unassigned,0.105263
+90:10,10,Non-escape SNVs left unassigned,0.210526
+95:5,1,Non-escape SNVs left unassigned,0.315789
+95:5,2,Non-escape SNVs left unassigned,0.526316
+95:5,3,Non-escape SNVs left unassigned,0.42105299999999996
+95:5,4,Non-escape SNVs left unassigned,0.105263
+95:5,5,Non-escape SNVs left unassigned,0
+95:5,6,Non-escape SNVs left unassigned,0.105263
+95:5,7,Non-escape SNVs left unassigned,0.315789
+95:5,8,Non-escape SNVs left unassigned,0.315789
+95:5,9,Non-escape SNVs left unassigned,0.210526
+95:5,10,Non-escape SNVs left unassigned,0.526316
+99:1,1,Non-escape SNVs left unassigned,0.42105299999999996
+99:1,2,Non-escape SNVs left unassigned,0.315789
+99:1,3,Non-escape SNVs left unassigned,0.210526
+99:1,4,Non-escape SNVs left unassigned,0.210526
+99:1,5,Non-escape SNVs left unassigned,0.631579
+99:1,6,Non-escape SNVs left unassigned,0.105263
+99:1,7,Non-escape SNVs left unassigned,0.210526
+99:1,8,Non-escape SNVs left unassigned,0.42105299999999996
+99:1,9,Non-escape SNVs left unassigned,0.105263
+99:1,10,Non-escape SNVs left unassigned,0.526316
