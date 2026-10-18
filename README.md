@@ -341,15 +341,18 @@ Rscript annotate_vcf_with_gtf.R \
   --gtf=gencode_v46_GRCh38 \
   --out=SAMPLE_chrX_XCISE.annot.tsv
 
-# Use a local GTF
+# Use a local GTF; merge the excise1.5 haplotype table, add XCI status, summary and plots
 Rscript annotation.R \
   --vcf=SAMPLE_chrX_XCISE.vcf \
+  --hap=SAMPLE_chrX_XCISE_haplotypes.tsv \
   --fasta=/path/to/genome.fa \
   --gtf=/path/to/annotation.gtf \
+  --xci_ref=xci_reference.tsv \
+  --summary=TRUE --plot=TRUE \
   --out=SAMPLE_chrX_XCISE.annot.tsv
 ```
 
-Outputs: per-SNV gene name, biotype, and nearest upstream/downstream gene with distance in bp.
+`annotation.R` outputs per-SNV gene name, biotype, XCI status (with `--xci_ref`), and the nearest upstream/downstream gene with distance in bp. `--hap` merges the haplotype TSV (X1/X2 alleles) with the VCF (`X1A` tag and `AD` UMI counts), cross-checks the two phasings and writes `*.haplotype_merged.tsv` with per-SNV X1/X2 UMIs. `--summary` writes a readable `*.summary.txt` and a `*.gene_summary.tsv`. `--plot` draws X1/X2 UMIs along chrX, the per-SNV UMI distribution on each haplotype, and the per-SNV X1 fraction. Without `--hap`, the phase comes from the VCF `X1A` tag, so the original XCISE VCF also works.
 
 ---
 
