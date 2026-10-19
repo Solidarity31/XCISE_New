@@ -5,7 +5,7 @@
 #   Rscript simulations/make_figures.R
 #
 # Inputs  (written by run_speed_benchmark.py / run_xci_skew_sweep.py):
-#   simulations/results/speed_benchmark.tsv
+#   simulations/results/speed_benchmark.tsv          (Perl / Python / C++ runtimes)
 #   simulations/results/skew_indep_replicates.tsv   (independent seeds; Figs 2-5)
 #   simulations/results/skew_indep_snv_level.tsv.gz
 #   simulations/results/skew_replicates.tsv         (paired control; summary only)
@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
   library(patchwork)
   library(scales)
 })
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0 || is.na(a)) b else a
 
 args <- commandArgs(trailingOnly = FALSE)
 script <- sub("^--file=", "", args[grep("^--file=", args)])
@@ -41,7 +42,7 @@ col <- c(
   perl      = "#eb6834",  # Perl excise1.5.pl
   python    = "#2a78d6",  # Python excise15.py (and all sweep results)
   secondary = "#1baf7a",  # second metric within a panel (shape-coded too)
-  optimiser = "#6250d6",  # Python optimiser-only time
+  cpp       = "#1baf7a",  # C++ cpp/excise15 (Fig. 1 only; direct-labelled)
   ref       = "#6250d6",  # REF allele on X1
   alt       = "#eda100",  # ALT allele on X1
   incorrect = "#e34948",
@@ -86,61 +87,77 @@ summ <- function(df, value) {
               min = min(.data[[value]]), max = max(.data[[value]]), .groups = "drop")
 }
 
-## ---- Figure 1: runtime Perl vs Python ----------------------------------------
+## ---- Figure 1: runtime Perl vs Python vs C++ ---------------------------------
 speed <- read_tsv(file.path(res_dir, "speed_benchmark.tsv"), show_col_types = FALSE)
+has_cpp <- "cpp_s" %in% names(speed)
+tools <- c(perl_s = "Perl excise1.5.pl", python_s = "Python excise15.py", cpp_s = "C++ cpp/excise15")
+if (!has_cpp) tools <- tools[1:2]
+tool_cols <- setNames(c(col[["perl"]], col[["python"]], col[["cpp"]])[seq_along(tools)], tools)
+tool_shapes <- setNames(c(16, 17, 15)[seq_along(tools)], tools)
 sp_long <- speed %>%
-  select(n_cells, seed, n_reads, perl_s, python_s, python_optimiser_s) %>%
-  pivot_longer(c(perl_s, python_s, python_optimiser_s), names_to = "what", values_to = "seconds") %>%
-  mutate(what = factor(what, c("perl_s", "python_s", "python_optimiser_s"),
-                       c("Perl excise1.5.pl (full run)", "Python excise15.py (full run)",
-                         "Python optimiser only")))
+  select(n_cells, seed, all_of(names(tools))) %>%
+  pivot_longer(all_of(names(tools)), names_to = "what", values_to = "seconds") %>%
+  mutate(what = factor(tools[what], tools))
 sp_mean <- sp_long %>% group_by(n_cells, what) %>%
-  summarise(seconds = exp(mean(log(pmax(seconds, 1e-3)))), .groups = "drop")  # geometric mean
-sp_fold <- speed %>% group_by(n_cells) %>%
-  summarise(n_rep = n(), fold = exp(mean(log(speedup))), fold_min = min(speedup),
-            fold_max = max(speedup), perl = exp(mean(log(perl_s))),
-            identical = sum(bc2xci_identical), .groups = "drop")
+  summarise(seconds = exp(mean(log(seconds))), .groups = "drop")      # geometric mean
+fold_long <- speed %>%
+  transmute(n_cells, seed, `Python excise15.py` = perl_s / python_s,
+            `C++ cpp/excise15` = if (has_cpp) perl_s / cpp_s else NA_real_) %>%
+  pivot_longer(-c(n_cells, seed), names_to = "what", values_to = "fold") %>%
+  filter(!is.na(fold)) %>% mutate(what = factor(what, tools))
+fold_mean <- fold_long %>% group_by(n_cells, what) %>%
+  summarise(n_rep = n(), fold = exp(mean(log(fold))), .groups = "drop")
 write_csv(speed, file.path(res_dir, "fig1_speed_data.csv"))
+write_csv(fold_mean, file.path(res_dir, "fig1_speedup_geomean.csv"))
 
-f1_cols <- c(col[["perl"]], col[["python"]], col[["optimiser"]])
+xmax <- max(speed$n_cells)
+end_lab <- function(d, y) d %>% filter(n_cells == xmax) %>%
+  mutate(lab = as.character(what))
 p1a <- ggplot(sp_long, aes(n_cells, seconds, colour = what, shape = what)) +
-  geom_line(data = sp_mean, aes(linetype = what), linewidth = 0.5) +
+  geom_line(data = sp_mean, linewidth = 0.5) +
   geom_point(size = 1.6, alpha = 0.85, position = position_jitter(width = 0.02, height = 0, seed = 1)) +
-  geom_text(data = sp_fold, inherit.aes = FALSE,
-            aes(n_cells, perl * 1.9, label = sprintf("%.1fx", fold)),
-            size = 2.5, colour = "black") +
-  scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma) +
-  scale_y_log10(labels = label_number(accuracy = 0.01, drop0trailing = TRUE),
-                expand = expansion(mult = c(0.05, 0.15))) +
-  scale_colour_manual(values = f1_cols) +
-  scale_shape_manual(values = c(16, 17, 1)) +
-  scale_linetype_manual(values = c("solid", "solid", "22")) +
-  labs(x = "Cells (2,000 SNVs; ~60 reads per cell)", y = "Wall-clock time (s, log scale)",
-       title = "Runtime", subtitle = "Numbers: mean speed-up of the full Python run over Perl") +
-  theme(legend.position = c(0.02, 0.99), legend.justification = c(0, 1))
+  geom_text(data = end_lab(sp_mean), aes(label = lab), hjust = 0, nudge_x = 0.06, size = 2.4,
+            show.legend = FALSE) +
+  scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma,
+                expand = expansion(mult = c(0.04, 0.42))) +
+  scale_y_log10(labels = label_number(accuracy = 0.1, drop0trailing = TRUE)) +
+  scale_colour_manual(values = tool_cols) + scale_shape_manual(values = tool_shapes) +
+  labs(x = "Cells (2,000 SNVs; ~60 reads per cell)", y = "Wall-clock time per run (s, log scale)",
+       title = "Runtime", subtitle = "Points: datasets; lines: geometric mean") +
+  theme(legend.position = "none")
 
-p1b <- ggplot(speed, aes(n_cells, speedup)) +
+p1b <- ggplot(fold_long, aes(n_cells, fold, colour = what, shape = what)) +
   geom_hline(yintercept = 1, linewidth = 0.3, colour = col[["ink"]], linetype = "22") +
-  geom_line(data = sp_fold, aes(y = fold), colour = col[["python"]], linewidth = 0.5) +
-  geom_point(colour = col[["python"]], size = 1.6, alpha = 0.85) +
-  geom_text(data = sp_fold, aes(y = fold_max, label = paste0("n=", n_rep)),
-            vjust = -1, size = 2.3, colour = col[["ink"]]) +
-  scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma) +
-  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.15))) +
-  labs(x = "Cells", y = "Speed-up (Perl time / Python time)", title = "Speed-up",
-       subtitle = "Points: replicate datasets; line: geometric mean")
+  geom_line(data = fold_mean, linewidth = 0.5) +
+  geom_point(size = 1.6, alpha = 0.85) +
+  geom_text(data = fold_mean, aes(label = sprintf("%.0fx", fold),
+                                  vjust = ifelse(what == tools[["cpp_s"]] %||% "", 2.2, -1.1)),
+            size = 2.3, show.legend = FALSE) +
+  geom_text(data = end_lab(fold_mean), aes(label = sub(" .*", "", lab)), hjust = 0, nudge_x = 0.06,
+            size = 2.4, show.legend = FALSE) +
+  scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma,
+                expand = expansion(mult = c(0.06, 0.16))) +
+  scale_y_log10(breaks = c(1, 3, 10, 30, 100, 300), expand = expansion(mult = c(0.05, 0.12))) +
+  scale_colour_manual(values = tool_cols, drop = TRUE) + scale_shape_manual(values = tool_shapes, drop = TRUE) +
+  labs(x = "Cells", y = "Speed-up over Perl (log scale)", title = "Speed-up over Perl",
+       subtitle = sprintf("Numbers: geometric mean of %d datasets per size", max(fold_mean$n_rep))) +
+  theme(legend.position = "none")
 
-fig1 <- (p1a | p1b) + plot_layout(widths = c(1.25, 1)) +
-  plot_annotation(
-    tag_levels = "A",
-    caption = sprintf(paste0(
-      "Both tools: -t 4 -j 4 -pretrain, run sequentially on the same simulated BAM; %d datasets. Python time includes ",
-      "BAM reading and one-off numba compilation.\nbc2xci byte-identical in %d of %d runs; elsewhere the stochastic tries ",
-      "reached different local optima (median %d, max %d of %s cells labelled differently)."),
-      nrow(speed), sum(speed$bc2xci_identical), nrow(speed),
-      as.integer(median(speed$cells_label_differs)), max(speed$cells_label_differs),
-      comma(max(speed$n_cells))))
-save_fig(fig1, "fig1_runtime_perl_vs_python", 180, 95)
+cap1 <- sprintf(paste0(
+  "All tools: -t 4 -j 4 -pretrain on the same simulated BAMs (%d datasets), run one at a time. Times are full runs ",
+  "including BAM reading;\nPython includes one-off numba compilation. Optimiser alone: Python %s s, C++ %s s per run. ",
+  "bc2xci identical to Perl: Python %d/%d, C++ %d/%d runs;\nthe rest reached different local optima of the ",
+  "stochastic search (1,000-2,000 cells; at most %d cell labelled differently)."),
+  nrow(speed),
+  paste(sprintf("%.2f", range(speed$python_optimiser_s)), collapse = "-"),
+  if (has_cpp) paste(ifelse(range(speed$cpp_optimiser_s) < 0.01, "<0.01",
+                            sprintf("%.2f", range(speed$cpp_optimiser_s))), collapse = "-") else "NA",
+  sum(speed$bc2xci_identical), nrow(speed),
+  if (has_cpp) sum(speed$cpp_bc2xci_identical_perl) else NA, nrow(speed),
+  max(c(speed$cells_label_differs, if (has_cpp) speed$cpp_cells_label_differs_perl)))
+fig1 <- (p1a | p1b) + plot_layout(widths = c(1.2, 1)) +
+  plot_annotation(tag_levels = "A", caption = cap1)
+save_fig(fig1, "fig1_runtime_perl_python_cpp", 180, 95)
 
 ## ---- skew sweep data ---------------------------------------------------------
 read_rep <- function(tag) read_tsv(file.path(res_dir, paste0(tag, "_replicates.tsv")),

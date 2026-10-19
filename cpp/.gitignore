@@ -1,0 +1,4 @@
+excise15
+excise15_test
+*.o
+gmon.out

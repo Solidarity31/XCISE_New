@@ -66,6 +66,8 @@ Key advances over the original XCISE include **MCMC-based haplotype optimization
 EXCISE/
 ├── excise1.5.pl                 # EXCISE v1.5: greedy multi-try + escape/monoallelic handling (latest)
 ├── excise15.py                  # Fast Python/numba port of excise1.5.pl (same flags and outputs)
+├── cpp/excise15.cpp, Makefile   # Fastest: C++/htslib port of excise1.5.pl (same flags and outputs)
+├── simulations/                 # XCI-skew simulations, Perl/Python/C++ benchmark, figures
 ├── extract_bc2xci_overlap.R     # Cells shared by two bc2xci files with each run's label
 ├── tests/simulate_xci_data.py   # Simulated WASP BAM + VCF with known truth (testing/benchmarking)
 ├── excise.pl                    # MCMC + simulated annealing + pretraining
@@ -169,9 +171,28 @@ Validation on simulated data (`tests/simulate_xci_data.py`):
 
 - When both scripts reach the same optimum, all five output files are byte-identical to `excise1.5.pl`. This holds with and without `-pretrain`, and with `-ph`.
 - Given the same optimizer result, Phase 2, both Phase-3 passes and all output writers match exactly, including on sparse data with many monoallelic SNVs.
-- On 8,000 cells, 2,000 SNVs and 0.48 M reads (`-t 4 -j 4 -pretrain`), the run took 8.5 s instead of 95 s, with identical `bc2xci` output. The optimizer took 0.05 s, so most of the remaining time is BAM reading and a one-off ~3 s JIT compile. The gap grows with `-t` and data size.
+- On 1,000–16,000 cells (2,000 SNVs, `-t 4 -j 4 -pretrain`, 3 datasets per size), it was 2.5× to 13.7× faster than Perl. The optimizer took 0.04–0.06 s, so most of the remaining time is BAM reading and a one-off ~3 s JIT compile. See `simulations/`.
 
 Results are not bit-identical to the Perl script for the same `-seed`, because the RNGs differ and Perl iterates hashes in random order. On hard, sparse data, individual tries can therefore reach different local optima, as they do between two Perl runs with different seeds.
+
+### Fast C++ port (`cpp/excise15`)
+
+`cpp/excise15` is the same program again in C++17 with htslib, with the same flags and the same five output files. It is the fastest option:
+
+```bash
+make -C cpp                    # needs htslib + zlib (apt install libhts-dev, or conda install -c bioconda htslib)
+cpp/excise15 -o SAMPLE_NAME -s hets_chrX.vcf.gz -b sample_WASP.bam \
+  -r X -t 100 -j 8 -seed 42 -pretrain -ph
+```
+
+The Python port spends almost all of its time outside the optimizer: decoding BAM records one at a time through pysam, plus numba compilation at start-up. The C++ port removes both. htslib decodes the BAM natively, and the binary is compiled ahead of time. The UMI collapsing (as in `%umis` / `%cb2allele`) uses one sort over a flat array, and the co-segregation votes are summed by sorting rather than through hash tables. The optimizer uses the same delta scoring as the Python port, and tries run on `-j` threads. For a non-system htslib, use `make -C cpp HTSLIB_PREFIX=$CONDA_PREFIX`.
+
+Validation against `excise1.5.pl`:
+
+- On the 15 benchmark datasets, all five output files are byte-identical in 12 runs. In the remaining 3 runs (1,000 cells, where the search is hardest), every cell gets the same `X1`/`X2`/`Both` label as in Perl. The haplotype counts differ slightly because the search reached a different local optimum.
+- Given Perl's optimizer result (`make -C cpp excise15_test`, `INJECT=<file>`), Phase 2, both Phase-3 passes and all writers are byte-identical on sparse data. This holds with and without `-ph`, at several `-u` and `-p` settings.
+- The input paths also match Perl byte for byte: a gzipped whitelist with `-wl_strip_gem`, a gzipped VCF, reads without `UB` (soft UMIs), `-sm`, `-ms`, and several BAMs.
+- Speed: 88–101× faster than Perl at every size from 1,000 to 16,000 cells, which is 6.5–37× faster than the Python port (geometric means per size). At 16,000 cells (0.96 M reads), it took 1.6–2.4 s, compared with 181–185 s for Perl and 13–14 s for Python.
 
 ### MCMC pipeline (`excise.pl`)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Runtime benchmark: excise1.5.pl (Perl) vs excise15.py (Python/numba)
-on simulated datasets of increasing cell number.
+Runtime benchmark: excise1.5.pl (Perl) vs excise15.py (Python/numba) vs
+cpp/excise15 (C++/htslib) on simulated datasets of increasing cell number.
 
 Usage (from the repository root):
   python3 simulations/run_speed_benchmark.py [--cells 1000 2000 4000 8000 16000]
@@ -13,6 +13,9 @@ Datasets: 2000 SNVs, 60 reads/cell, legacy simulator state model
 concurrently), and wall-clock time is recorded for the full run including
 BAM reading; the Python time includes its one-off numba JIT compilation.
 Whether the two bc2xci outputs are byte-identical is recorded per run.
+If cpp/excise15 has been built (make -C cpp), the C++ port is timed on the
+same datasets with the same flags, after the Perl/Python runs; rows that
+already have a C++ time are not re-run.
 
 Existing datasets / runs are reused, never overwritten.
 Output: simulations/results/speed_benchmark.tsv
@@ -95,18 +98,45 @@ def main():
             print("cells=%d seed=%d  perl=%.1fs python=%.1fs  speedup=%.1fx identical=%s"
                   % (n, s, tpl, tpy, tpl / tpy, same), flush=True)
             write_rows(out, rows)
+    # C++ port, timed separately (never concurrently with anything else)
+    cpp = os.path.join(ROOT, "cpp", "excise15")
+    if os.path.exists(cpp):
+        for r in rows:
+            if r.get("cpp_s", "NA") not in ("NA", ""):
+                continue
+            d = os.path.join(HERE, "data", "speed", "c%s_s%s" % (r["n_cells"], r["seed"]))
+            os.makedirs(os.path.join(d, "cpp"), exist_ok=True)
+            tc = timed([cpp, "-o", "b", "-s", "../sim.vcf", "-b", "../sim.bam", "-t", "4", "-j", str(a.jobs),
+                        "-seed", str(r["seed"]), "-pretrain"], os.path.join(d, "cpp"), os.path.join(d, "cpp", "log"))
+            opt = re.search(r"Optimiser wall time: ([\d.]+)", open(os.path.join(d, "cpp", "log")).read())
+            r["cpp_s"] = "%.2f" % tc
+            r["cpp_optimiser_s"] = opt.group(1) if opt else "NA"
+            r["cpp_speedup_vs_perl"] = "%.2f" % (float(r["perl_s"]) / tc)
+            r["cpp_speedup_vs_python"] = "%.2f" % (float(r["python_s"]) / tc)
+            r["cpp_bc2xci_identical_perl"] = int(filecmp.cmp(
+                os.path.join(d, "perl", "b_chrX_XCISE_bc2xci.txt"),
+                os.path.join(d, "cpp", "b_chrX_XCISE_bc2xci.txt"), shallow=False))
+            print("cells=%s seed=%s  cpp=%.2fs  (perl %ss, python %ss)  identical_to_perl=%d"
+                  % (r["n_cells"], r["seed"], tc, r["perl_s"], r["python_s"], r["cpp_bc2xci_identical_perl"]),
+                  flush=True)
+            write_rows(out, rows)
     # Output agreement beyond byte identity: both tools are stochastic, so on
     # sparse data their best tries can reach different local optima.
     for r in rows:
         d = os.path.join(HERE, "data", "speed", "c%s_s%s" % (r["n_cells"], r["seed"]))
         best, lab = {}, {}
-        for sub in ("perl", "python"):
+        subs = ("perl", "python", "cpp") if os.path.exists(os.path.join(d, "cpp", "b_chrX_XCISE_summary.txt")) \
+            else ("perl", "python")
+        for sub in subs:
             with open(os.path.join(d, sub, "b_chrX_XCISE_summary.txt")) as fh:
                 best[sub] = re.match(r"Best score\s+:\s+(\S+)", fh.readline()).group(1)
             with open(os.path.join(d, sub, "b_chrX_XCISE_bc2xci.txt")) as fh:
                 lab[sub] = dict((l.split("\t")[0], l.rstrip("\n").split("\t")[3]) for l in fh)
         r["perl_best_score"], r["python_best_score"] = best["perl"], best["python"]
         r["cells_label_differs"] = sum(1 for cb in lab["perl"] if lab["python"].get(cb) != lab["perl"][cb])
+        if "cpp" in best:
+            r["cpp_best_score"] = best["cpp"]
+            r["cpp_cells_label_differs_perl"] = sum(1 for cb in lab["perl"] if lab["cpp"].get(cb) != lab["perl"][cb])
     write_rows(out, rows)
 
 

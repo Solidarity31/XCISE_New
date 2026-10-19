@@ -7,7 +7,7 @@ biological datasets are read or written here.
 ```
 simulations/
 ├── run_xci_skew_sweep.py     # XCI-skew experiment: simulate -> excise15.py -> score
-├── run_speed_benchmark.py    # Perl vs Python runtime on increasing cell numbers
+├── run_speed_benchmark.py    # Perl vs Python vs C++ runtime on increasing cell numbers
 ├── make_figures.R            # all figures (ggplot2); reads results/ only
 ├── results/                  # numerical results (TSV / CSV) behind every figure
 ├── figures/                  # PDF + 300 dpi PNG
@@ -78,6 +78,11 @@ mostly BAM reading plus about 3 s of numba compilation. The bc2xci output was by
 10 of 15 runs. In the other 5, both stochastic optimizers reached different local optima,
 with Python scoring higher twice, Perl twice and the two tied once. One cell in all 15
 runs got a different label.
+
+The **C++ port** (`cpp/excise15`, timed separately on the same 15 datasets) was 92×, 100×, 101×, 88× and
+88× faster than Perl at 1,000 to 16,000 cells, which is 37× to 6.5× faster than Python. At 16,000 cells it took
+1.6–2.4 s, against 181–185 s for Perl. Its output was byte-identical to Perl in 12 of 15 runs. In the
+other 3 runs (1,000 cells), every cell still got the same label.
 
 **XCI skew (Figs. 2–5, `results/skew_indep_*`, 10 independent replicates per ratio).**
 
