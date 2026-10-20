@@ -1,0 +1,393 @@
+regime,min_umis,penalty,n_rep,cell_acc_mean,wrong_x_pct_mean,unassigned_pct_mean
+"High noise
+10% inactive-X reads",1,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",1,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",1,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",1,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",1,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",1,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",1,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",2,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",2,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",2,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",2,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",2,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",2,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",2,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",4,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",4,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",4,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",4,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",4,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",4,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",4,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",6,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",6,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",6,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",6,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",6,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",6,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",6,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",10,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",10,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",10,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",10,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",10,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",10,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",10,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",15,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",15,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",15,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",15,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",15,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",15,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",15,20,5,0.1511,0.45263157894736844,97.53684
+"High noise
+10% inactive-X reads",20,1,5,0.4539,0,0
+"High noise
+10% inactive-X reads",20,2,5,0.5654,0,0
+"High noise
+10% inactive-X reads",20,3,5,0.568,0,0.6105266
+"High noise
+10% inactive-X reads",20,5,5,0.6119,0,12.88424
+"High noise
+10% inactive-X reads",20,8,5,0.7017,0.021052631578947368,54.50526
+"High noise
+10% inactive-X reads",20,12,5,0.5203,0.17894736842105263,87.24212
+"High noise
+10% inactive-X reads",20,20,5,0.1511,0.45263157894736844,97.53684
+"Low coverage
+10 reads/cell",1,1,5,0.8519,0,0
+"Low coverage
+10 reads/cell",1,2,5,0.9145,0,0.042105199999999995
+"Low coverage
+10 reads/cell",1,3,5,0.9202,0,0.5263156
+"Low coverage
+10 reads/cell",1,5,5,0.9245,0,2.778948
+"Low coverage
+10 reads/cell",1,8,5,0.9287,0.010526315789473684,9.536842
+"Low coverage
+10 reads/cell",1,12,5,0.9277000000000001,0.021052631578947368,20.42106
+"Low coverage
+10 reads/cell",1,20,5,0.8963,0.042105263157894736,38.9263
+"Low coverage
+10 reads/cell",2,1,5,0.8519,0,0
+"Low coverage
+10 reads/cell",2,2,5,0.9145,0,0.042105199999999995
+"Low coverage
+10 reads/cell",2,3,5,0.9202,0,0.5263156
+"Low coverage
+10 reads/cell",2,5,5,0.9245,0,2.778948
+"Low coverage
+10 reads/cell",2,8,5,0.9287,0.010526315789473684,9.536842
+"Low coverage
+10 reads/cell",2,12,5,0.9277000000000001,0.021052631578947368,20.42106
+"Low coverage
+10 reads/cell",2,20,5,0.8963,0.042105263157894736,38.9263
+"Low coverage
+10 reads/cell",4,1,5,0.8519,0,0
+"Low coverage
+10 reads/cell",4,2,5,0.9145,0,0.0421274
+"Low coverage
+10 reads/cell",4,3,5,0.9202,0,0.5265375999999999
+"Low coverage
+10 reads/cell",4,5,5,0.9245,0,2.78028
+"Low coverage
+10 reads/cell",4,8,5,0.9287,0.010526315789473684,9.541302
+"Low coverage
+10 reads/cell",4,12,5,0.9265,0.010526315789473684,20.851399999999998
+"Low coverage
+10 reads/cell",4,20,5,0.8962,0.042105263157894736,39.19596
+"Low coverage
+10 reads/cell",6,1,5,0.8521000000000001,0,0
+"Low coverage
+10 reads/cell",6,2,5,0.9146,0,0.0421274
+"Low coverage
+10 reads/cell",6,3,5,0.9202,0,0.4848322
+"Low coverage
+10 reads/cell",6,5,5,0.9245,0,2.698224
+"Low coverage
+10 reads/cell",6,8,5,0.9287000000000001,0.010526315789473684,9.466358
+"Low coverage
+10 reads/cell",6,12,5,0.9251,0.010526315789473684,20.76708
+"Low coverage
+10 reads/cell",6,20,5,0.8952,0.042105263157894736,39.40504
+"Low coverage
+10 reads/cell",10,1,5,0.8509,0,0
+"Low coverage
+10 reads/cell",10,2,5,0.9135,0,0
+"Low coverage
+10 reads/cell",10,3,5,0.9194,0,0.3907008
+"Low coverage
+10 reads/cell",10,5,5,0.9226,0,2.455386
+"Low coverage
+10 reads/cell",10,8,5,0.9265,0.010526315789473684,8.58851
+"Low coverage
+10 reads/cell",10,12,5,0.9237,0.021052631578947368,20.0687
+"Low coverage
+10 reads/cell",10,20,5,0.8929,0.042105263157894736,39.282379999999996
+"Low coverage
+10 reads/cell",15,1,5,0.8477,0,0
+"Low coverage
+10 reads/cell",15,2,5,0.9046,0,0
+"Low coverage
+10 reads/cell",15,3,5,0.9109,0,0.2102998
+"Low coverage
+10 reads/cell",15,5,5,0.9136,0.010526315789473684,2.007256
+"Low coverage
+10 reads/cell",15,8,5,0.9147000000000001,0.010526315789473684,8.584337999999999
+"Low coverage
+10 reads/cell",15,12,5,0.9079,0.010526315789473684,17.79598
+"Low coverage
+10 reads/cell",15,20,5,0.8584,0.042105263157894736,40.40302
+"Low coverage
+10 reads/cell",20,1,5,0.8099,0.05263157894736842,0
+"Low coverage
+10 reads/cell",20,2,5,0.862,0.010526315789473684,0
+"Low coverage
+10 reads/cell",20,3,5,0.8663,0.010526315789473684,0.1729356
+"Low coverage
+10 reads/cell",20,5,5,0.8667,0.010526315789473684,1.269958
+"Low coverage
+10 reads/cell",20,8,5,0.8601,0.021052631578947368,6.2264159999999995
+"Low coverage
+10 reads/cell",20,12,5,0.8275,0.031578947368421054,20.0395
+"Low coverage
+10 reads/cell",20,20,5,0.7377,0.031578947368421054,38.87082
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,1,5,0.8867999999999999,0.010526315789473684,0.2041904
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,2,5,0.9384,0,1.33073
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,3,5,0.949,0.010526315789473684,3.013456
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,5,5,0.9551999999999999,0.042105263157894736,8.005332
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,8,5,0.9543,0.13684210526315788,16.07422
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,12,5,0.7198,8.968421052631578,53.814
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",1,20,5,0.5372,15.052631578947368,66.3737
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,1,5,0.886,0.021052631578947368,0.206569
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,2,5,0.9381,0,1.3175919999999999
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,3,5,0.9487,0.010526315789473684,3.012352
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,5,5,0.9551,0.010526315789473684,8.061254
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,8,5,0.952,0.17894736842105263,16.3225
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,12,5,0.7615999999999999,7.189473684210526,51.45694
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",2,20,5,0.5572,14.263157894736842,65.7671
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,1,5,0.8837999999999999,0.021052631578947368,0.10725257999999999
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,2,5,0.9361,0,0.8329208
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,3,5,0.9461999999999999,0.021052631578947368,2.703968
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,5,5,0.9542999999999999,0.010526315789473684,7.952758
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,8,5,0.953,0.16842105263157894,16.54926
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,12,5,0.858,3.905263157894737,41.766059999999996
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",4,20,5,0.5639,13.252631578947367,68.2704
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,1,5,0.8748,0.010526315789473684,0.0704946
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,2,5,0.9311,0,0.7826177999999999
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,3,5,0.9419,0.010526315789473684,2.17125
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,5,5,0.9472999999999999,0.021052631578947368,7.227768
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,8,5,0.9484,0.05263157894736842,16.45052
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,12,5,0.9052,1.7263157894736842,33.45908
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",6,20,5,0.6116,10.926315789473684,66.78218
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,1,5,0.8466,0.042105263157894736,0
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,2,5,0.9012,0.010526315789473684,0.31983459999999997
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,3,5,0.9111,0.010526315789473684,1.3709200000000001
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,5,5,0.9121,0.010526315789473684,5.9225080000000005
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,8,5,0.9075,0.010526315789473684,10.9588
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,12,5,0.8804,0.19999999999999998,26.956
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",10,20,5,0.5596,7.431578947368421,64.8412
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,1,5,0.6612,0.17894736842105263,0
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,2,5,0.6841,0.042105263157894736,0.17903660000000002
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,3,5,0.6856,0.042105263157894736,0.9025602
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,5,5,0.6767,0.010526315789473684,4.129128
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,8,5,0.6437999999999999,0.031578947368421054,13.088180000000001
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,12,5,0.6014,0.1894736842105263,21.16452
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",15,20,5,0.3527,4.778947368421052,56.4615
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,1,5,0.2019,4.526315789473684,0
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,2,5,0.2039,4.389473684210526,0.9699920000000001
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,3,5,0.2227,2.6315789473684212,1.5706820000000001
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,5,5,0.2185,2.0526315789473686,7.8668819999999995
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,8,5,0.1956,2.1052631578947367,17.18868
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,12,5,0.1633,2.610526315789474,27.74456
+"Sparse SNVs
+3,000 SNVs, 15 reads/cell",20,20,5,0.1181,2.5789473684210527,47.86944
+"Standard
+40 reads/cell, 2% noise",1,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",1,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",1,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",1,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",1,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",1,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",1,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",2,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",2,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",2,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",2,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",2,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",2,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",2,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",4,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",4,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",4,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",4,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",4,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",4,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",4,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",6,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",6,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",6,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",6,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",6,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",6,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",6,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",10,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",10,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",10,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",10,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",10,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",10,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",10,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",15,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",15,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",15,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",15,5,5,0.9932,0,0.4210522
+"Standard
+40 reads/cell, 2% noise",15,8,5,0.9929,0,3.68421
+"Standard
+40 reads/cell, 2% noise",15,12,5,0.9912,0,12.821019999999999
+"Standard
+40 reads/cell, 2% noise",15,20,5,0.9807,0,34.6316
+"Standard
+40 reads/cell, 2% noise",20,1,5,0.9087999999999999,0,0
+"Standard
+40 reads/cell, 2% noise",20,2,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",20,3,5,0.993,0,0
+"Standard
+40 reads/cell, 2% noise",20,5,5,0.9932,0,0.42111879999999996
+"Standard
+40 reads/cell, 2% noise",20,8,5,0.9929,0,3.684788
+"Standard
+40 reads/cell, 2% noise",20,12,5,0.9912,0,12.8446
+"Standard
+40 reads/cell, 2% noise",20,20,5,0.9807,0,34.63878

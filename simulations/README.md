@@ -117,3 +117,35 @@ conditions, which have adequate coverage and low noise, skew down to 99:1 had no
 The paired control (`skew_paired_summary.tsv`) gives identical cell accuracy at every ratio
 within each replicate. Harder regimes, with lower coverage, higher noise or fewer SNVs per cell, are
 the next experiment.
+
+## Parameter sweep: min UMIs per SNV (`-u`) × discordant penalty (`-p`) (Fig. 6)
+
+`run_param_sweep.py` covers `-u` {1, 2, 4, 6, 10, 15, 20} × `-p` {1, 2, 3, 5, 8, 12, 20} on four regimes, with 5
+replicates each and 980 runs in total. Every regime has 2,000 cells (5% Both, X1:X2 = 50:50) and 5% escape SNVs.
+All runs use `-t 100 -pretrain`. The runs use `cpp/excise15`, which matches `excise1.5.pl`. Spot checks with the Perl script itself (standard regime, replicate 1): at `-u 10 -p 3` all five outputs were byte-identical. At `-u 2 -p 12` the two reached slightly different local optima (best score 37,010 vs 37,013), but labelled all 2,000 cells the same, with identical cell accuracy and 11.7% vs 11.9% of SNVs left unassigned.
+Per-run results are in `results/param_sweep_replicates.tsv`. Means, SDs and ranges are in `results/param_sweep_summary.tsv`.
+
+| Regime | Defaults (`-u 4 -p 5`) cell accuracy | Best setting (cell accuracy) |
+|---|---|---|
+| Standard (40 reads/cell, 2% noise) | 0.993 | same (0.993 for `-p` 2–8) |
+| Low coverage (10 reads/cell) | 0.925 | `-u` 1–6, `-p 8`: 0.929 |
+| High noise (10% inactive-X reads) | 0.612 | `-p 8`: 0.702 (any `-u`) |
+| Sparse SNVs (3,000 SNVs, 15 reads/cell) | 0.954 | `-u 1` or `2`, `-p 5`: 0.955 |
+
+- **`-p` matters most at its extremes.**
+  - `-p 1` is too lenient: escape SNVs get phased (only 3% left unassigned, against 100% at `-p` ≥ 2). They add
+    discordant UMIs to every cell, so ~10% of true X1/X2 cells drop below the 90% purity threshold and are called `Both`
+    (standard regime: cell accuracy 0.909).
+  - High `-p` (12–20) is too strict: more and more SNVs are left unassigned (up to 98% at high noise). `Both` cells
+    are lost (recall 0.03–0.30 at `-p 20`).
+  - In the sparse regime, high `-p` with low `-u` also mis-phases SNVs (haplotype accuracy 0.77–0.88). It then assigns
+    up to 15% of cells to the **wrong X**. The only other setting with wrong-X calls above 1% is `-u 20` in the same regime (2–4.5%).
+- **`-u` only matters when SNVs have few UMIs.** With 40 reads/cell, every SNV passes any `-u` up to 20, so the
+  results do not change. In the sparse regime, raising `-u` drops SNVs (2,990 SNVs pass at `-u 1`, 1,384 at `-u 10`
+  and 108 at `-u 20`). Cells lose evidence and become `Low_coverage`/`Unknown` (cell accuracy 0.20 at `-u 20`).
+  A moderate `-u` (6–10) protects against wrong-X calls when `-p` is high.
+- **Defaults hold up:** `-u 4 -p 5` is within 0.5 points of the best setting in three of four regimes. The exception is
+  high noise, where `-p 8` gains 9 points of cell accuracy, at the cost of leaving 55% of SNVs unassigned.
+- **High-noise accuracy is limited by the classification threshold, not these parameters.** With 10% of reads from
+  the inactive X, a monoallelic cell's haplotype purity is near the hard-coded 90% cut-off for X1/X2 calls. Most
+  errors are true X1/X2 cells called `Both`.

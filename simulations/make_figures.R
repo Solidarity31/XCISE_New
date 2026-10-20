@@ -333,3 +333,56 @@ p5 <- ggplot() +
   theme(legend.position = "bottom", panel.grid.major.y = element_blank(),
         axis.ticks.y = element_blank(), axis.line.y = element_blank())
 save_fig(p5, "fig5_haplotype_tracks_chrX", 180, 110)
+
+## ---- Figure 6: parameter sweep (-u x -p) ------------------------------------
+ps_path <- file.path(res_dir, "param_sweep_replicates.tsv")
+if (file.exists(ps_path)) {
+  ps <- read_tsv(ps_path, show_col_types = FALSE)
+  regime_lab <- c(standard = "Standard\n40 reads/cell, 2% noise",
+                  low_coverage = "Low coverage\n10 reads/cell",
+                  high_noise = "High noise\n10% inactive-X reads",
+                  sparse_snvs = "Sparse SNVs\n3,000 SNVs, 15 reads/cell")
+  n_mono <- ps$n_X1[1] + ps$n_X2[1]
+  pss <- ps %>%
+    mutate(wrong_x_pct = 100 * wrong_x_cells / (n_X1 + n_X2),
+           unassigned_pct = 100 * snv_unassigned_nonesc) %>%
+    group_by(regime, min_umis, penalty) %>%
+    summarise(n_rep = n(),
+              across(c(cell_acc, wrong_x_pct, unassigned_pct, mono_recovery, recall_Both, hap_acc,
+                       snvs_pass_filter, escape_unassigned),
+                     list(mean = mean, sd = sd, min = min, max = max)), .groups = "drop") %>%
+    mutate(regime = factor(regime, names(regime_lab), regime_lab),
+           u = factor(min_umis, sort(unique(min_umis))), p = factor(penalty, sort(unique(penalty))))
+  write_tsv(pss %>% select(-u, -p), file.path(res_dir, "param_sweep_summary.tsv"))
+  dflt <- pss %>% filter(min_umis == 4, penalty == 5)
+  heat <- function(var, title, fmt, low, high, better_high) {
+    ggplot(pss, aes(p, u, fill = .data[[var]])) +
+      geom_tile(colour = "white", linewidth = 0.4) +
+      geom_tile(data = dflt, fill = NA, colour = "black", linewidth = 0.6) +
+      # white text only on the darker half of the colour ramp
+      geom_text(aes(label = sprintf(fmt, .data[[var]]),
+                    colour = (.data[[var]] - min(.data[[var]])) / diff(range(.data[[var]])) > 0.55),
+                size = 1.7, show.legend = FALSE) +
+      scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "black")) +
+      scale_fill_gradient(low = low, high = high, name = NULL) +
+      facet_wrap(~regime, nrow = 1) +
+      labs(x = "Discordant penalty (-p)", y = "Min UMIs per SNV (-u)", title = title) +
+      theme(panel.grid = element_blank(), axis.line = element_blank(), axis.ticks = element_blank(),
+            legend.key.height = unit(6, "mm"), legend.key.width = unit(2.5, "mm"))
+  }
+  f6a <- heat("cell_acc_mean", "Cell accuracy (all cells; Low_coverage/Unknown count as errors)", "%.2f",
+              "#f2f6fc", "#1f5fae", TRUE)
+  f6b <- heat("wrong_x_pct_mean", "Cells assigned to the wrong X (% of true X1/X2 cells)", "%.1f",
+              "#fdf3f2", "#b42c2b", FALSE)
+  f6c <- heat("unassigned_pct_mean", "Non-escape SNVs left unassigned (%)", "%.0f",
+              "#f4f4f2", "#52514e", FALSE)
+  write_csv(pss %>% select(regime, min_umis, penalty, n_rep, cell_acc_mean, wrong_x_pct_mean,
+                           unassigned_pct_mean), file.path(res_dir, "fig6_param_sweep_data.csv"))
+  fig6 <- (f6a / f6b / f6c) +
+    plot_annotation(tag_levels = "A", caption = sprintf(paste0(
+      "Mean of %d simulated replicates per regime and setting (2,000 cells: 5%% Both, X1:X2 = 50:50; 5%% escape SNVs). ",
+      "EXCISE 1.5 (cpp/excise15, identical to excise1.5.pl)\nwith -t 100 -pretrain; ",
+      "only -u and -p vary. Black outline: defaults (-u 4, -p 5). Haplotype accuracy and the other metrics are in ",
+      "results/param_sweep_summary.tsv."), max(pss$n_rep)))
+  save_fig(fig6, "fig6_param_sweep_min_umis_penalty", 180, 215)
+}
