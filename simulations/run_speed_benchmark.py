@@ -16,6 +16,11 @@ Whether the two bc2xci outputs are byte-identical is recorded per run.
 If cpp/excise15 has been built (make -C cpp), the C++ port is timed on the
 same datasets with the same flags, after the Perl/Python runs; rows that
 already have a C++ time are not re-run.
+With --xcise <path to the original XCISE xcise.pl>, the original is timed
+too, with -t 4 -u 4 (same tries and SNV filter as the EXCISE runs). It has
+no -j, -seed or -pretrain: its tries run one after another on one core.
+Cell accuracy against the simulated truth is recorded for every tool
+(one global X1/X2 label switch allowed, since the names are arbitrary).
 
 Existing datasets / runs are reused, never overwritten.
 Output: simulations/results/speed_benchmark.tsv
@@ -46,6 +51,7 @@ def main():
     ap.add_argument("--snvs", type=int, default=2000)
     ap.add_argument("--reads", type=int, default=60)
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--xcise", default=None, help="path to the original XCISE xcise.pl")
     ap.add_argument("--reuse", default=None,
                     help="existing dataset dir to use for (8000 cells, seed 11), "
                          "e.g. the dataset of the first reported benchmark")
@@ -120,13 +126,29 @@ def main():
                   % (r["n_cells"], r["seed"], tc, r["perl_s"], r["python_s"], r["cpp_bc2xci_identical_perl"]),
                   flush=True)
             write_rows(out, rows)
+    # original XCISE (single process), timed separately
+    if a.xcise:
+        for r in rows:
+            if r.get("xcise_s", "NA") not in ("NA", ""):
+                continue
+            d = os.path.join(HERE, "data", "speed", "c%s_s%s" % (r["n_cells"], r["seed"]))
+            os.makedirs(os.path.join(d, "xcise_orig"), exist_ok=True)
+            tx = timed(["perl", os.path.abspath(a.xcise), "-o", "b", "-s", "../sim.vcf", "-b", "../sim.bam",
+                        "-t", "4", "-u", "4"], os.path.join(d, "xcise_orig"), os.path.join(d, "xcise_orig", "log"))
+            r["xcise_s"] = "%.2f" % tx
+            r["perl15_speedup_vs_xcise"] = "%.2f" % (tx / float(r["perl_s"]))
+            if r.get("cpp_s", "NA") not in ("NA", ""):
+                r["cpp_speedup_vs_xcise"] = "%.2f" % (tx / float(r["cpp_s"]))
+            print("cells=%s seed=%s  original xcise=%.1fs  (perl1.5 %ss, cpp %ss)"
+                  % (r["n_cells"], r["seed"], tx, r["perl_s"], r.get("cpp_s")), flush=True)
+            write_rows(out, rows)
     # Output agreement beyond byte identity: both tools are stochastic, so on
     # sparse data their best tries can reach different local optima.
     for r in rows:
         d = os.path.join(HERE, "data", "speed", "c%s_s%s" % (r["n_cells"], r["seed"]))
         best, lab = {}, {}
-        subs = ("perl", "python", "cpp") if os.path.exists(os.path.join(d, "cpp", "b_chrX_XCISE_summary.txt")) \
-            else ("perl", "python")
+        subs = [x for x in ("perl", "python", "cpp", "xcise_orig")
+                if os.path.exists(os.path.join(d, x, "b_chrX_XCISE_summary.txt"))]
         for sub in subs:
             with open(os.path.join(d, sub, "b_chrX_XCISE_summary.txt")) as fh:
                 best[sub] = re.match(r"Best score\s+:\s+(\S+)", fh.readline()).group(1)
@@ -137,7 +159,24 @@ def main():
         if "cpp" in best:
             r["cpp_best_score"] = best["cpp"]
             r["cpp_cells_label_differs_perl"] = sum(1 for cb in lab["perl"] if lab["cpp"].get(cb) != lab["perl"][cb])
+        if "xcise_orig" in best:
+            r["xcise_best_score"] = best["xcise_orig"]
+            r["xcise_cells_label_differs_perl"] = sum(1 for cb in lab["perl"] if lab["xcise_orig"].get(cb) != lab["perl"][cb])
+        truth = os.path.join(d, "truth.tsv")
+        if os.path.exists(truth):
+            t = dict(l.split()[:2] for l in open(truth))
+            for sub in subs:
+                r[{"perl": "perl", "python": "python", "cpp": "cpp", "xcise_orig": "xcise"}[sub] + "_cell_acc"] = \
+                    "%.4f" % cell_accuracy(t, lab[sub])
     write_rows(out, rows)
+
+
+def cell_accuracy(truth, called):
+    """Fraction of true cells called correctly, allowing one global X1/X2 swap."""
+    sw = {"X1": "X2", "X2": "X1"}
+    a = sum(1 for cb, s in truth.items() if called.get(cb) == s)
+    b = sum(1 for cb, s in truth.items() if sw.get(called.get(cb), called.get(cb)) == s)
+    return max(a, b) / len(truth)
 
 
 def write_rows(out, rows):
