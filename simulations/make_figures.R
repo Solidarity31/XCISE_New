@@ -133,7 +133,7 @@ p1a <- ggplot(sp_long, aes(n_cells, seconds, colour = what, shape = what)) +
        title = "Runtime", subtitle = "Points: datasets; lines: geometric mean") +
   theme(legend.position = "none")
 
-lab_above <- levels(fold_mean$what)[1]                       # lowest series: labels above
+lab_above <- tools[["python_s"]]                             # Python labels above, others below
 p1b <- ggplot(fold_long, aes(n_cells, fold, colour = what, shape = what)) +
   geom_hline(yintercept = 1, linewidth = 0.3, colour = col[["ink"]], linetype = "22") +
   geom_line(data = fold_mean, linewidth = 0.5) +
@@ -153,14 +153,14 @@ p1b <- ggplot(fold_long, aes(n_cells, fold, colour = what, shape = what)) +
   theme(legend.position = "none")
 
 cap1 <- sprintf(paste0(
-  "All tools: 4 tries (-t 4) on the same simulated BAMs (%d datasets), run one at a time; times are full runs including ",
-  "BAM reading. EXCISE 1.5: -j 4 -pretrain.%s\n",
-  "Python includes one-off numba compilation. Optimiser alone: Python %s s, C++ %s s. ",
+  "All tools: 4 tries (-t 4) on the same simulated BAMs (%d datasets), run one at a time; times are full runs ",
+  "including BAM reading.\nEXCISE 1.5: -j 4 -pretrain.%s\n",
+  "Python includes one-off numba compilation. Optimiser alone: Python %s s, C++ %s s.\n",
   "Cell accuracy vs simulated truth (mean): %s.\n",
   "bc2xci identical to Perl EXCISE 1.5: Python %d/%d, C++ %d/%d runs; the rest reached different local optima ",
   "(at most %d cell labelled differently)."),
   nrow(speed),
-  if (has_orig) " Original XCISE (Vityay/XCISE @3a1d063): -u 4 (same SNV filter); no -j/-pretrain, tries run serially." else "",
+  if (has_orig) " Original XCISE (Vityay/XCISE @3a1d063): -u 4 (same SNV filter); no -j or -pretrain, tries run one after another." else "",
   paste(sprintf("%.2f", range(speed$python_optimiser_s)), collapse = "-"),
   if (has_cpp) sprintf("at most %.2f", max(speed$cpp_optimiser_s)) else "NA",
   paste(sprintf("%s %.3f", sub("EXCISE 1.5 |Original XCISE xcise.pl", "", c(if (has_orig) "Original" , "Perl", "Python", if (has_cpp) "C++")),
@@ -171,7 +171,7 @@ cap1 <- sprintf(paste0(
   max(c(speed$cells_label_differs, if (has_cpp) speed$cpp_cells_label_differs_perl)))
 fig1 <- (p1a | p1b) + plot_layout(widths = c(1.2, 1)) +
   plot_annotation(tag_levels = "A", caption = cap1)
-save_fig(fig1, "fig1_runtime_benchmark", 180, 100)
+save_fig(fig1, "fig1_runtime_benchmark", 180, 108)
 
 ## ---- skew sweep data ---------------------------------------------------------
 read_rep <- function(tag) read_tsv(file.path(res_dir, paste0(tag, "_replicates.tsv")),

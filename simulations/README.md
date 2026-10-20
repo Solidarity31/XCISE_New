@@ -7,7 +7,8 @@ biological datasets are read or written here.
 ```
 simulations/
 ├── run_xci_skew_sweep.py     # XCI-skew experiment: simulate -> excise15.py -> score
-├── run_speed_benchmark.py    # Perl vs Python vs C++ runtime on increasing cell numbers
+├── run_speed_benchmark.py    # original XCISE vs EXCISE 1.5 Perl / Python / C++ runtime by cell number
+├── run_default_tries_benchmark.py  # the same tools at the default -t 100
 ├── make_figures.R            # all figures (ggplot2); reads results/ only
 ├── results/                  # numerical results (TSV / CSV) behind every figure
 ├── figures/                  # PDF + 300 dpi PNG
@@ -83,6 +84,19 @@ The **C++ port** (`cpp/excise15`, timed separately on the same 15 datasets, with
 184×, 188×, 199×, 174× and 188× faster than Perl at 1,000 to 16,000 cells, which is 75× to 14× faster than
 Python. At 16,000 cells it took 0.95–0.99 s, against 181–185 s for Perl. Its output was byte-identical to Perl in 12 of 15 runs. In the
 other 3 runs (1,000 cells), every cell still got the same label.
+
+**Original XCISE** (`xcise.pl` from Vityay/XCISE @3a1d063, timed with `--xcise`; Fig. 1). It used the same 4 tries
+and `-u 4`, so it applies the same SNV filter as EXCISE 1.5. It has no `-j`, `-seed` or `-pretrain`, so its tries run
+one after another on one core. Times ranged from 112–127 s at 1,000 cells to 5,086–6,292 s (85–105 min) at 16,000 cells.
+Against the original, EXCISE 1.5 was 10–31× faster in Perl, 25–422× in Python and 1,849–5,812× in C++
+(geometric means per size). All four tools reached the same best score and the same cell accuracy against the
+simulated truth on every dataset of 2,000 cells or more (one 2,000-cell set differed by 2 points out of 84,442).
+At 1,000 cells, the original's labels differed from Perl EXCISE 1.5 in 0–2 cells. Mean cell accuracy was 0.998
+for all four tools.
+
+**Default tries (`-t 100`, `results/default_tries_benchmark.tsv`, 1,000 cells, seed 11).** The original took
+3,362 s (56 min), Perl EXCISE 1.5 290 s, Python 2.6 s and C++ 0.15 s. Best scores were 42,135, 42,131, 42,127
+and 42,129, and cell accuracy was 0.996 for all four.
 
 **XCI skew (Figs. 2–5, `results/skew_indep_*`, 10 independent replicates per ratio).**
 
