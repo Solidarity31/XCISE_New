@@ -150,8 +150,7 @@ cap1 <- sprintf(paste0(
   "stochastic search (1,000-2,000 cells; at most %d cell labelled differently)."),
   nrow(speed),
   paste(sprintf("%.2f", range(speed$python_optimiser_s)), collapse = "-"),
-  if (has_cpp) paste(ifelse(range(speed$cpp_optimiser_s) < 0.01, "<0.01",
-                            sprintf("%.2f", range(speed$cpp_optimiser_s))), collapse = "-") else "NA",
+  if (has_cpp) sprintf("at most %.2f", max(speed$cpp_optimiser_s)) else "NA",
   sum(speed$bc2xci_identical), nrow(speed),
   if (has_cpp) sum(speed$cpp_bc2xci_identical_perl) else NA, nrow(speed),
   max(c(speed$cells_label_differs, if (has_cpp) speed$cpp_cells_label_differs_perl)))

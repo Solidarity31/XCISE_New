@@ -171,7 +171,8 @@ Validation on simulated data (`tests/simulate_xci_data.py`):
 
 - When both scripts reach the same optimum, all five output files are byte-identical to `excise1.5.pl`. This holds with and without `-pretrain`, and with `-ph`.
 - Given the same optimizer result, Phase 2, both Phase-3 passes and all output writers match exactly, including on sparse data with many monoallelic SNVs.
-- On 1,000–16,000 cells (2,000 SNVs, `-t 4 -j 4 -pretrain`, 3 datasets per size), it was 2.5× to 13.7× faster than Perl. The optimizer took 0.04–0.06 s, so most of the remaining time is BAM reading and a one-off ~3 s JIT compile. See `simulations/`.
+- On 1,000–16,000 cells (2,000 SNVs, `-t 4 -j 4 -pretrain`, 3 datasets per size), it was 2.5× to 13.7× faster than Perl. The optimizer took 0.04–0.06 s, so most of the remaining time is BAM reading and numba compilation. See `simulations/`.
+- The compiled numba kernels are cached on disk (`__pycache__/`). The first run in a new location compiles them, and later runs skip that step, saving about 1.3 s per run.
 
 Results are not bit-identical to the Perl script for the same `-seed`, because the RNGs differ and Perl iterates hashes in random order. On hard, sparse data, individual tries can therefore reach different local optima, as they do between two Perl runs with different seeds.
 
@@ -185,14 +186,14 @@ cpp/excise15 -o SAMPLE_NAME -s hets_chrX.vcf.gz -b sample_WASP.bam \
   -r X -t 100 -j 8 -seed 42 -pretrain -ph
 ```
 
-The Python port spends almost all of its time outside the optimizer: decoding BAM records one at a time through pysam, plus numba compilation at start-up. The C++ port removes both. htslib decodes the BAM natively, and the binary is compiled ahead of time. The UMI collapsing (as in `%umis` / `%cb2allele`) uses one sort over a flat array, and the co-segregation votes are summed by sorting rather than through hash tables. The optimizer uses the same delta scoring as the Python port, and tries run on `-j` threads. For a non-system htslib, use `make -C cpp HTSLIB_PREFIX=$CONDA_PREFIX`.
+The Python port spends almost all of its time outside the optimizer: decoding BAM records one at a time through pysam, plus numba compilation at start-up. The C++ port removes both. htslib decodes the BAM natively, and the binary is compiled ahead of time. The chromosome is also split into chunks that are decompressed and parsed in parallel on `-samthreads` threads (default `-j`). Each read belongs to the chunk holding its start, and chunks are merged in genomic order, so the result is the same as a single sequential pass. The UMI collapsing (as in `%umis` / `%cb2allele`) uses one sort over a flat array, and the co-segregation votes are summed by sorting rather than through hash tables. The optimizer uses the same delta scoring as the Python port, and tries run on `-j` threads. For a non-system htslib, use `make -C cpp HTSLIB_PREFIX=$CONDA_PREFIX`.
 
 Validation against `excise1.5.pl`:
 
 - On the 15 benchmark datasets, all five output files are byte-identical in 12 runs. In the remaining 3 runs (1,000 cells, where the search is hardest), every cell gets the same `X1`/`X2`/`Both` label as in Perl. The haplotype counts differ slightly because the search reached a different local optimum.
 - Given Perl's optimizer result (`make -C cpp excise15_test`, `INJECT=<file>`), Phase 2, both Phase-3 passes and all writers are byte-identical on sparse data. This holds with and without `-ph`, at several `-u` and `-p` settings.
 - The input paths also match Perl byte for byte: a gzipped whitelist with `-wl_strip_gem`, a gzipped VCF, reads without `UB` (soft UMIs), `-sm`, `-ms`, and several BAMs.
-- Speed: 88–101× faster than Perl at every size from 1,000 to 16,000 cells, which is 6.5–37× faster than the Python port (geometric means per size). At 16,000 cells (0.96 M reads), it took 1.6–2.4 s, compared with 181–185 s for Perl and 13–14 s for Python.
+- Speed: 174–199× faster than Perl at every size from 1,000 to 16,000 cells, which is 14–75× faster than the Python port (geometric means per size). At 16,000 cells (0.96 M reads), it took 0.95–0.99 s, compared with 181–185 s for Perl and 13–14 s for Python. On a BAM shaped like real 10x data (10 M chrX reads, 90% without WASP tags), BAM reading took 1.5 s, against 5.0 s single-threaded and 2.0 s for `samtools view -@4 -c`. The output was byte-identical.
 
 ### MCMC pipeline (`excise.pl`)
 
@@ -373,7 +374,7 @@ Rscript annotation.R \
   --out=SAMPLE_chrX_XCISE.annot.tsv
 ```
 
-`annotation.R` outputs per-SNV gene name, biotype, XCI status (with `--xci_ref`), and the nearest upstream/downstream gene with distance in bp. `--hap` merges the haplotype TSV (X1/X2 alleles) with the VCF (`X1A` tag and `AD` UMI counts), cross-checks the two phasings and writes `*.haplotype_merged.tsv` with per-SNV X1/X2 UMIs. `--summary` writes a readable `*.summary.txt` and a `*.gene_summary.tsv`. `--plot` draws X1/X2 UMIs along chrX, the per-SNV UMI distribution on each haplotype, and the per-SNV X1 fraction. Without `--hap`, the phase comes from the VCF `X1A` tag, so the original XCISE VCF also works.
+`annotation.R` outputs per-SNV gene name, biotype, XCI status (with `--xci_ref`), and the nearest upstream/downstream gene with distance in bp. `--hap` merges the haplotype TSV (X1/X2 alleles) with the VCF (`X1A` tag and `AD` UMI counts), cross-checks the two phasings and writes `*.haplotype_merged.tsv` with per-SNV X1/X2 UMIs. `--summary` writes a readable `*.summary.txt` and a `*.gene_summary.tsv`. `--plot` draws X1/X2 UMIs along chrX, the per-SNV UMI distribution on each haplotype, and the per-SNV X1 fraction. Without `--hap`, the phase comes from the VCF `X1A` tag, so the original XCISE VCF also works. The GTF is read through `grep`, which keeps only the `gene` rows before parsing (about 2% of a GENCODE GTF). This makes the import roughly 9–13× faster than parsing the whole file, and gives the same gene table. On systems without `grep` (or `gzip`, for `.gtf.gz`), it falls back to rtracklayer or a full `fread`.
 
 ---
 

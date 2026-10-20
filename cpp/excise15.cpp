@@ -459,6 +459,10 @@ int main(int argc, char** argv) {
     if (snp.empty()) die("Zero SNVs, run terminated\n");
 
     // ---- BAMs ----
+    // Each BAM is split into genomic chunks parsed in parallel (own file handle
+    // per worker). A read belongs to the chunk holding its start position, and
+    // chunk results are concatenated in genomic order, so the observations,
+    // their order and all counters equal a single sequential pass.
     fputs("Reading BAM files ...\n", stderr);
     vector<Rec> recs;
     // cell-barcode keys point into deque storage (stable addresses)
@@ -467,28 +471,32 @@ int main(int argc, char** argv) {
     std::deque<string> cb_list;
     BamStats st;
     std::unordered_set<string> wl_seen, wl_matched;
-    vector<string> bams = o.bams;
-    std::sort(bams.begin(), bams.end());
-    for (const string& path : bams) {
-        fprintf(stderr, "    Reading %s ...\n", path.c_str());
+    struct Chunk {
+        hts_pos_t beg = 0, end = 0;
+        vector<Rec> recs;                 // cid = local cell id, uoff into arena, seq local
+        string arena;
+        vector<string> cbs;               // local cell ids, first-seen order
+        BamStats st;
+        std::unordered_set<string> wl_seen, wl_matched;
+    };
+    auto parse_chunk = [&](const string& path, Chunk& C) {
         samFile* fp = sam_open(path.c_str(), "r");
         if (!fp) die("Cannot open BAM " + path);
-        hts_set_threads(fp, o.samthreads);
         sam_hdr_t* hdr = sam_hdr_read(fp);
-        if (!hdr) die("Cannot read header of " + path);
-        if (sam_hdr_name2tid(hdr, chrom.c_str()) < 0) {
-            fprintf(stderr, "    [warn] %s not in BAM header of %s; skipped\n", chrom.c_str(), path.c_str());
-            sam_hdr_destroy(hdr); sam_close(fp); continue;
-        }
         hts_idx_t* idx = sam_index_load(fp, path.c_str());
-        if (!idx) die("Cannot load index for " + path + " (run samtools index)");
-        hts_itr_t* itr = sam_itr_querys(idx, hdr, chrom.c_str());
+        if (!hdr || !idx) die("Cannot read header/index of " + path + " (run samtools index)");
+        int tid = sam_hdr_name2tid(hdr, chrom.c_str());
+        hts_itr_t* itr = sam_itr_queryi(idx, tid, C.beg, C.end);
+        std::unordered_map<std::string_view, int32_t> lcb;
+        std::deque<string> lcb_store;
         bam1_t* b = bam_init1();
-        while (sam_itr_next(fp, itr, b) >= 0) {
+        while (itr && sam_itr_next(fp, itr, b) >= 0) {
+            if (b->core.pos < C.beg) continue;          // started in the previous chunk
             if (b->core.flag & BAM_FSECONDARY) continue;
             uint8_t* vG = bam_aux_get(b, "vG");
+            if (!vG) continue;
             uint8_t* vW = bam_aux_get(b, "vW");
-            if (!vG || !vW || bam_aux2i(vW) != 1) continue;
+            if (!vW || bam_aux2i(vW) != 1) continue;
             if (vG[0] != 'B') continue;
             if (o.monostretch > 0 && has_monostretch(b, o.monostretch)) continue;
             if (o.no_softmasking) {
@@ -508,12 +516,12 @@ int main(int argc, char** argv) {
             std::string_view cb(cbp);
             if (cb == "-") continue;
             if (use_wl) {
-                st.wl_cand++;
+                C.st.wl_cand++;
                 string m = o.wl_strip_gem ? strip_gem(string(cb)) : string(cb);
-                wl_seen.insert(m);
-                if (!allowed.count(m)) { st.wl_rej++; continue; }
-                st.wl_kept++;
-                wl_matched.insert(m);
+                C.wl_seen.insert(m);
+                if (!allowed.count(m)) { C.st.wl_rej++; continue; }
+                C.st.wl_kept++;
+                C.wl_matched.insert(m);
             }
             std::string_view umi;
             string soft_umi;
@@ -522,14 +530,14 @@ int main(int argc, char** argv) {
                 const char* u = bam_aux2Z(ub);
                 umi = u ? u : "";
                 if (umi == "-") continue;
-                st.hard++;
+                C.st.hard++;
             } else {
                 soft_umi = string(cb) + "_" + sam_hdr_tid2name(hdr, b->core.tid) + "_" + std::to_string(b->core.pos + 1) + "_" +
                       std::to_string(b->core.flag) + "_" + cigar_string(b) + "_" + std::to_string(b->core.isize);
                 umi = soft_umi;
-                st.soft++;
+                C.st.soft++;
             }
-            st.inf_reads++;
+            C.st.inf_reads++;
             int32_t cid = -1;
             int64_t uoff = -1;
             uint64_t uhash = 0;
@@ -539,21 +547,78 @@ int main(int argc, char** argv) {
                 if (k >= nvA) continue;
                 int allele = (int)bam_auxB2i(vA, k);
                 if (allele != 1 && allele != 2) continue;
-                if (o.scramble) allele = 1 + (int)(rng() & 1);
-                st.inf_alleles++;
+                if (o.scramble) allele = 1 + (int)(rng() & 1);   // single chunk when -x
+                C.st.inf_alleles++;
                 if (cid < 0) {
-                    auto it = cb_index.find(cb);
-                    if (it == cb_index.end()) {
-                        cid = (int32_t)cb_list.size(); cb_list.emplace_back(cb); cb_index.emplace(cb_list.back(), cid);
+                    auto it = lcb.find(cb);
+                    if (it == lcb.end()) {
+                        cid = (int32_t)C.cbs.size(); C.cbs.emplace_back(cb);
+                        lcb_store.emplace_back(cb); lcb.emplace(lcb_store.back(), cid);
                     } else cid = it->second;
-                    uoff = (int64_t)umi_arena.size();
-                    umi_arena.append(umi.data(), umi.size());
+                    uoff = (int64_t)C.arena.size();
+                    C.arena.append(umi.data(), umi.size());
                     uhash = std::hash<std::string_view>{}(umi);
                 }
-                recs.push_back(Rec{pos, uhash, uoff, (int64_t)recs.size(), cid, (uint32_t)umi.size(), (int8_t)allele});
+                C.recs.push_back(Rec{pos, uhash, uoff, (int64_t)C.recs.size(), cid, (uint32_t)umi.size(), (int8_t)allele});
             }
         }
-        bam_destroy1(b); hts_itr_destroy(itr); hts_idx_destroy(idx); sam_hdr_destroy(hdr); sam_close(fp);
+        bam_destroy1(b); if (itr) hts_itr_destroy(itr); hts_idx_destroy(idx); sam_hdr_destroy(hdr); sam_close(fp);
+    };
+    vector<string> bams = o.bams;
+    std::sort(bams.begin(), bams.end());
+    for (const string& path : bams) {
+        fprintf(stderr, "    Reading %s ...\n", path.c_str());
+        hts_pos_t clen;
+        {
+            samFile* fp = sam_open(path.c_str(), "r");
+            if (!fp) die("Cannot open BAM " + path);
+            sam_hdr_t* hdr = sam_hdr_read(fp);
+            if (!hdr) die("Cannot read header of " + path);
+            int tid = sam_hdr_name2tid(hdr, chrom.c_str());
+            if (tid < 0) {
+                fprintf(stderr, "    [warn] %s not in BAM header of %s; skipped\n", chrom.c_str(), path.c_str());
+                sam_hdr_destroy(hdr); sam_close(fp); continue;
+            }
+            hts_idx_t* idx = sam_index_load(fp, path.c_str());
+            if (!idx) die("Cannot load index for " + path + " (run samtools index)");
+            clen = sam_hdr_tid2len(hdr, tid);
+            hts_idx_destroy(idx); sam_hdr_destroy(hdr); sam_close(fp);
+        }
+        // more chunks than threads for load balance; one chunk when -x (RNG order)
+        int nthreads = o.scramble ? 1 : std::max(1, o.samthreads);
+        int nchunks = o.scramble ? 1 : nthreads * 8;
+        vector<Chunk> chunks(nchunks);
+        for (int k = 0; k < nchunks; k++) {
+            chunks[k].beg = clen * k / nchunks;
+            chunks[k].end = (k == nchunks - 1) ? HTS_POS_MAX : clen * (k + 1) / nchunks;
+        }
+        std::atomic<int> next_chunk(0);
+        vector<std::thread> pool;
+        for (int w = 0; w < nthreads; w++)
+            pool.emplace_back([&]() {
+                for (int k; (k = next_chunk.fetch_add(1)) < nchunks;) parse_chunk(path, chunks[k]);
+            });
+        for (auto& th : pool) th.join();
+        // merge in genomic order: global cell ids in first-seen order
+        for (Chunk& C : chunks) {
+            vector<int32_t> gid(C.cbs.size());
+            for (size_t l = 0; l < C.cbs.size(); l++) {
+                auto it = cb_index.find(C.cbs[l]);
+                if (it == cb_index.end()) {
+                    gid[l] = (int32_t)cb_list.size(); cb_list.emplace_back(C.cbs[l]);
+                    cb_index.emplace(cb_list.back(), gid[l]);
+                } else gid[l] = it->second;
+            }
+            int64_t aoff = (int64_t)umi_arena.size(), soff = (int64_t)recs.size();
+            umi_arena += C.arena;
+            for (Rec r : C.recs) { r.cid = gid[r.cid]; r.uoff += aoff; r.seq += soff; recs.push_back(r); }
+            st.inf_reads += C.st.inf_reads; st.inf_alleles += C.st.inf_alleles;
+            st.hard += C.st.hard; st.soft += C.st.soft;
+            st.wl_cand += C.st.wl_cand; st.wl_kept += C.st.wl_kept; st.wl_rej += C.st.wl_rej;
+            wl_seen.insert(C.wl_seen.begin(), C.wl_seen.end());
+            wl_matched.insert(C.wl_matched.begin(), C.wl_matched.end());
+            vector<Rec>().swap(C.recs); string().swap(C.arena);
+        }
         fprintf(stderr, "    Reads with allelic info: %lld  Alleles: %lld  UMIs: %lld/%lld (hard/soft)\n",
                 (long long)st.inf_reads, (long long)st.inf_alleles, (long long)st.hard, (long long)st.soft);
     }

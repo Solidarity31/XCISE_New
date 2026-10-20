@@ -79,9 +79,9 @@ mostly BAM reading plus about 3 s of numba compilation. The bc2xci output was by
 with Python scoring higher twice, Perl twice and the two tied once. One cell in all 15
 runs got a different label.
 
-The **C++ port** (`cpp/excise15`, timed separately on the same 15 datasets) was 92×, 100×, 101×, 88× and
-88× faster than Perl at 1,000 to 16,000 cells, which is 37× to 6.5× faster than Python. At 16,000 cells it took
-1.6–2.4 s, against 181–185 s for Perl. Its output was byte-identical to Perl in 12 of 15 runs. In the
+The **C++ port** (`cpp/excise15`, timed separately on the same 15 datasets, with parallel BAM parsing) was
+184×, 188×, 199×, 174× and 188× faster than Perl at 1,000 to 16,000 cells, which is 75× to 14× faster than
+Python. At 16,000 cells it took 0.95–0.99 s, against 181–185 s for Perl. Its output was byte-identical to Perl in 12 of 15 runs. In the
 other 3 runs (1,000 cells), every cell still got the same label.
 
 **XCI skew (Figs. 2–5, `results/skew_indep_*`, 10 independent replicates per ratio).**

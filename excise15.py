@@ -344,7 +344,7 @@ def build_tables(obs, n_cells):
 # =============================================================================
 # NUMBA KERNELS
 # =============================================================================
-@njit(cache=False)
+@njit(cache=True)
 def _cell_term(h1, h2, pen):
     mx = h1 if h1 > h2 else h2
     mn = h2 if h1 > h2 else h1
@@ -353,7 +353,7 @@ def _cell_term(h1, h2, pen):
     return (mx - 1) - pen * mn
 
 
-@njit(cache=False)
+@njit(cache=True)
 def _move_delta(s, old, new, ptr, ecell, en1, en2, h1, h2, pen):
     d = 0.0
     for k in range(ptr[s], ptr[s + 1]):
@@ -372,7 +372,7 @@ def _move_delta(s, old, new, ptr, ecell, en1, en2, h1, h2, pen):
     return d
 
 
-@njit(cache=False)
+@njit(cache=True)
 def _move_apply(s, old, new, ptr, ecell, en1, en2, h1, h2):
     for k in range(ptr[s], ptr[s + 1]):
         c = ecell[k]
@@ -386,7 +386,7 @@ def _move_apply(s, old, new, ptr, ecell, en1, en2, h1, h2):
             h1[c] += en2[k]; h2[c] += en1[k]
 
 
-@njit(cache=False)
+@njit(cache=True)
 def hill_climb(order, dirs, mono, ptr, ecell, en1, en2, n_cells, pen, seed,
                pass_imps, pass_score):
     """Greedy hill-climber of excise1.5.pl, with delta scoring.
@@ -468,7 +468,7 @@ def hill_climb(order, dirs, mono, ptr, ecell, en1, en2, n_cells, pen, seed,
     return init_score, score, npass
 
 
-@njit(cache=False)
+@njit(cache=True)
 def _pair_votes(cptr, csnv, cal, n_snv, cap, cell_lo, cell_hi, out_off, keys, sgn, seed):
     """Co-segregation votes for cells [cell_lo, cell_hi) (excise1.5 pretrain)."""
     np.random.seed(seed)
@@ -515,7 +515,7 @@ def _pair_votes(cptr, csnv, cal, n_snv, cap, cell_lo, cell_hi, out_off, keys, sg
             # unused slots keep key -1 and are dropped by the caller
 
 
-@njit(cache=False)
+@njit(cache=True)
 def _bfs_seed(cand, aptr, anbr, aw, n_snv, wmin):
     """BFS seeding with bottleneck weights (_bfs_seed_with_uncertainty)."""
     dirs = np.zeros(n_snv, np.int8)
@@ -549,7 +549,7 @@ def _bfs_seed(cand, aptr, anbr, aw, n_snv, wmin):
     return dirs, seen, bott
 
 
-@njit(cache=False)
+@njit(cache=True)
 def _phase3a(cand, ptr, ecell, en1, en2, h1, h2, ratio):
     """Phase-3 directionality assignment against fixed cb2phase_best."""
     out = np.zeros(cand.size, np.int8)
