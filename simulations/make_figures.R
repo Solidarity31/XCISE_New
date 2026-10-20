@@ -87,76 +87,91 @@ summ <- function(df, value) {
               min = min(.data[[value]]), max = max(.data[[value]]), .groups = "drop")
 }
 
-## ---- Figure 1: runtime Perl vs Python vs C++ ---------------------------------
+## ---- Figure 1: runtime, original XCISE vs EXCISE 1.5 (Perl / Python / C++) ----
 speed <- read_tsv(file.path(res_dir, "speed_benchmark.tsv"), show_col_types = FALSE)
-has_cpp <- "cpp_s" %in% names(speed)
-tools <- c(perl_s = "Perl excise1.5.pl", python_s = "Python excise15.py", cpp_s = "C++ cpp/excise15")
-if (!has_cpp) tools <- tools[1:2]
-tool_cols <- setNames(c(col[["perl"]], col[["python"]], col[["cpp"]])[seq_along(tools)], tools)
-tool_shapes <- setNames(c(16, 17, 15)[seq_along(tools)], tools)
+has_cpp <- "cpp_s" %in% names(speed) && !anyNA(speed$cpp_s)
+has_orig <- "xcise_s" %in% names(speed) && !anyNA(speed$xcise_s)
+tools <- c(xcise_s = "Original XCISE xcise.pl", perl_s = "EXCISE 1.5 Perl", python_s = "EXCISE 1.5 Python",
+           cpp_s = "EXCISE 1.5 C++")
+tool_cols <- c(col[["ink"]], col[["perl"]], col[["python"]], col[["cpp"]])
+tool_shapes <- c(18, 16, 17, 15)
+tool_lty <- c("22", "solid", "solid", "solid")
+keep <- c(has_orig, TRUE, TRUE, has_cpp)
+tools <- tools[keep]
+tool_cols <- setNames(tool_cols[keep], tools); tool_shapes <- setNames(tool_shapes[keep], tools)
+tool_lty <- setNames(tool_lty[keep], tools)
+base_col <- if (has_orig) "xcise_s" else "perl_s"           # speed-up baseline
+base_lab <- tools[[base_col]]
 sp_long <- speed %>%
   select(n_cells, seed, all_of(names(tools))) %>%
-  pivot_longer(all_of(names(tools)), names_to = "what", values_to = "seconds") %>%
-  mutate(what = factor(tools[what], tools))
+  pivot_longer(all_of(names(tools)), names_to = "key", values_to = "seconds") %>%
+  mutate(what = factor(tools[key], tools))
 sp_mean <- sp_long %>% group_by(n_cells, what) %>%
   summarise(seconds = exp(mean(log(seconds))), .groups = "drop")      # geometric mean
-fold_long <- speed %>%
-  transmute(n_cells, seed, `Python excise15.py` = perl_s / python_s,
-            `C++ cpp/excise15` = if (has_cpp) perl_s / cpp_s else NA_real_) %>%
-  pivot_longer(-c(n_cells, seed), names_to = "what", values_to = "fold") %>%
-  filter(!is.na(fold)) %>% mutate(what = factor(what, tools))
+fold_long <- sp_long %>%
+  left_join(speed %>% select(n_cells, seed, base = all_of(base_col)), by = c("n_cells", "seed")) %>%
+  filter(key != base_col) %>%
+  mutate(fold = base / seconds, what = droplevels(what))
 fold_mean <- fold_long %>% group_by(n_cells, what) %>%
   summarise(n_rep = n(), fold = exp(mean(log(fold))), .groups = "drop")
 write_csv(speed, file.path(res_dir, "fig1_speed_data.csv"))
 write_csv(fold_mean, file.path(res_dir, "fig1_speedup_geomean.csv"))
 
 xmax <- max(speed$n_cells)
-end_lab <- function(d, y) d %>% filter(n_cells == xmax) %>%
-  mutate(lab = as.character(what))
+end_lab <- function(d) d %>% filter(n_cells == xmax) %>% mutate(lab = as.character(what))
 p1a <- ggplot(sp_long, aes(n_cells, seconds, colour = what, shape = what)) +
-  geom_line(data = sp_mean, linewidth = 0.5) +
+  geom_line(data = sp_mean, aes(linetype = what), linewidth = 0.5) +
   geom_point(size = 1.6, alpha = 0.85, position = position_jitter(width = 0.02, height = 0, seed = 1)) +
-  geom_text(data = end_lab(sp_mean), aes(label = lab), hjust = 0, nudge_x = 0.06, size = 2.4,
+  geom_text(data = end_lab(sp_mean), aes(label = lab), hjust = 0, nudge_x = 0.06, size = 2.3,
             show.legend = FALSE) +
   scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma,
-                expand = expansion(mult = c(0.04, 0.42))) +
-  scale_y_log10(labels = label_number(accuracy = 0.1, drop0trailing = TRUE)) +
+                expand = expansion(mult = c(0.04, 0.55))) +
+  scale_y_log10(labels = label_number(accuracy = 0.1, drop0trailing = TRUE, big.mark = ",")) +
   scale_colour_manual(values = tool_cols) + scale_shape_manual(values = tool_shapes) +
+  scale_linetype_manual(values = tool_lty) +
   labs(x = "Cells (2,000 SNVs; ~60 reads per cell)", y = "Wall-clock time per run (s, log scale)",
        title = "Runtime", subtitle = "Points: datasets; lines: geometric mean") +
   theme(legend.position = "none")
 
+lab_above <- levels(fold_mean$what)[1]                       # lowest series: labels above
 p1b <- ggplot(fold_long, aes(n_cells, fold, colour = what, shape = what)) +
   geom_hline(yintercept = 1, linewidth = 0.3, colour = col[["ink"]], linetype = "22") +
   geom_line(data = fold_mean, linewidth = 0.5) +
   geom_point(size = 1.6, alpha = 0.85) +
-  geom_text(data = fold_mean, aes(label = sprintf("%.0fx", fold),
-                                  vjust = ifelse(what == tools[["cpp_s"]] %||% "", 2.2, -1.1)),
+  geom_text(data = fold_mean, aes(label = ifelse(fold >= 100, comma(round(fold)), sprintf("%.0f", fold)),
+                                  vjust = ifelse(what == lab_above, -1.1, 2.0)),
+            size = 2.1, show.legend = FALSE) +
+  geom_text(data = end_lab(fold_mean), aes(label = sub("EXCISE 1.5 ", "", lab)), hjust = 0, nudge_x = 0.06,
             size = 2.3, show.legend = FALSE) +
-  geom_text(data = end_lab(fold_mean), aes(label = sub(" .*", "", lab)), hjust = 0, nudge_x = 0.06,
-            size = 2.4, show.legend = FALSE) +
   scale_x_log10(breaks = sort(unique(speed$n_cells)), labels = comma,
-                expand = expansion(mult = c(0.06, 0.16))) +
-  scale_y_log10(breaks = c(1, 3, 10, 30, 100, 300), expand = expansion(mult = c(0.05, 0.12))) +
-  scale_colour_manual(values = tool_cols, drop = TRUE) + scale_shape_manual(values = tool_shapes, drop = TRUE) +
-  labs(x = "Cells", y = "Speed-up over Perl (log scale)", title = "Speed-up over Perl",
-       subtitle = sprintf("Numbers: geometric mean of %d datasets per size", max(fold_mean$n_rep))) +
+                expand = expansion(mult = c(0.06, 0.18))) +
+  scale_y_log10(breaks = 10^(0:5), labels = label_comma(), expand = expansion(mult = c(0.08, 0.12))) +
+  scale_colour_manual(values = tool_cols) + scale_shape_manual(values = tool_shapes) +
+  labs(x = "Cells", y = sprintf("Speed-up over %s (log scale)", sub(" xcise.pl", "", base_lab)),
+       title = sprintf("Speed-up over %s", sub(" xcise.pl", "", base_lab)),
+       subtitle = sprintf("Numbers: geometric mean (x) of %d datasets per size", max(fold_mean$n_rep))) +
   theme(legend.position = "none")
 
 cap1 <- sprintf(paste0(
-  "All tools: -t 4 -j 4 -pretrain on the same simulated BAMs (%d datasets), run one at a time. Times are full runs ",
-  "including BAM reading;\nPython includes one-off numba compilation. Optimiser alone: Python %s s, C++ %s s per run. ",
-  "bc2xci identical to Perl: Python %d/%d, C++ %d/%d runs;\nthe rest reached different local optima of the ",
-  "stochastic search (1,000-2,000 cells; at most %d cell labelled differently)."),
+  "All tools: 4 tries (-t 4) on the same simulated BAMs (%d datasets), run one at a time; times are full runs including ",
+  "BAM reading. EXCISE 1.5: -j 4 -pretrain.%s\n",
+  "Python includes one-off numba compilation. Optimiser alone: Python %s s, C++ %s s. ",
+  "Cell accuracy vs simulated truth (mean): %s.\n",
+  "bc2xci identical to Perl EXCISE 1.5: Python %d/%d, C++ %d/%d runs; the rest reached different local optima ",
+  "(at most %d cell labelled differently)."),
   nrow(speed),
+  if (has_orig) " Original XCISE (Vityay/XCISE @3a1d063): -u 4 (same SNV filter); no -j/-pretrain, tries run serially." else "",
   paste(sprintf("%.2f", range(speed$python_optimiser_s)), collapse = "-"),
   if (has_cpp) sprintf("at most %.2f", max(speed$cpp_optimiser_s)) else "NA",
+  paste(sprintf("%s %.3f", sub("EXCISE 1.5 |Original XCISE xcise.pl", "", c(if (has_orig) "Original" , "Perl", "Python", if (has_cpp) "C++")),
+                c(if (has_orig) mean(speed$xcise_cell_acc), mean(speed$perl_cell_acc), mean(speed$python_cell_acc),
+                  if (has_cpp) mean(speed$cpp_cell_acc))), collapse = ", "),
   sum(speed$bc2xci_identical), nrow(speed),
   if (has_cpp) sum(speed$cpp_bc2xci_identical_perl) else NA, nrow(speed),
   max(c(speed$cells_label_differs, if (has_cpp) speed$cpp_cells_label_differs_perl)))
 fig1 <- (p1a | p1b) + plot_layout(widths = c(1.2, 1)) +
   plot_annotation(tag_levels = "A", caption = cap1)
-save_fig(fig1, "fig1_runtime_perl_python_cpp", 180, 95)
+save_fig(fig1, "fig1_runtime_benchmark", 180, 100)
 
 ## ---- skew sweep data ---------------------------------------------------------
 read_rep <- function(tag) read_tsv(file.path(res_dir, paste0(tag, "_replicates.tsv")),
