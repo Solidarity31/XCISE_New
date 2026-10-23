@@ -1,0 +1,145 @@
+---
+title: "EXCISE: X-chromosome inactivation calls from single-cell RNA-seq"
+author:
+-   name: Zihan Zhuang
+    email: zhuangzihan2021@hotmail.com
+package: EXCISE
+output:
+    BiocStyle::html_document:
+        toc: true
+vignette: >
+    %\VignetteIndexEntry{X-chromosome inactivation calls with EXCISE}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+# Introduction
+
+In female mammalian cells one X chromosome is inactivated. Which one is
+inactive differs from cell to cell, and it can be read from allele-specific
+expression at heterozygous SNVs. **EXCISE** phases the heterozygous SNVs of
+one chromosome into two haplotypes, X1 and X2, and calls each cell as `X1`,
+`X2`, `Both` (biallelic), `Low_coverage` or `Unknown`.
+
+EXCISE extends XCISE (Henning et al., bioRxiv 2024,
+doi:10.1101/2024.08.29.610317). The package runs a C++ port of
+`excise1.5.pl` that gives the same results, linked to htslib through
+`r Biocpkg("Rhtslib")`.
+
+# Installation
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("EXCISE")
+```
+
+# Input
+
+EXCISE needs:
+
+1.  A coordinate-sorted, indexed BAM file aligned with STAR in WASP mode
+    (`--waspOutputMode SAMtag --outSAMattributes vA vG CB UB ...`). Reads
+    need the WASP tags `vA`, `vG` and `vW`, a cell barcode in `CB` (or `RG`
+    for plate-based data) and, if available, a UMI in `UB`.
+2.  A VCF of heterozygous SNVs on the chromosome analysed (plain or
+    gzipped).
+3.  Optionally, a whitelist of cell barcodes, such as a 10x
+    `barcodes.tsv.gz`.
+
+The package contains a small simulated example: 300 cells and 200 SNVs on a
+5 Mb chromosome `X`, with known cell states.
+
+```{r files}
+library(EXCISE)
+bam <- system.file("extdata", "sim_chrX.bam", package = "EXCISE")
+vcf <- system.file("extdata", "sim_chrX_hets.vcf", package = "EXCISE")
+```
+
+# Running EXCISE
+
+```{r run}
+res <- runExcise(bam, vcf, tries = 20, pretrain = TRUE, seed = 42)
+res
+```
+
+`tries` is the number of optimiser restarts (default 100); `pretrain = TRUE`
+starts each try from a co-segregation graph of the SNVs, which is
+recommended. Use `workers` to run tries in parallel and `bamThreads` to read
+the BAM in parallel.
+
+# Results
+
+Per-cell calls are a `DataFrame`. `hap1` and `hap2` are the UMIs supporting
+haplotype X1 and X2.
+
+```{r calls}
+calls <- xciCalls(res)
+head(calls)
+table(calls$call)
+```
+
+The phased SNVs are a `GRanges`. `x1Allele` says which allele lies on X1;
+`Unk` marks SNVs left unassigned, for example candidates for escape from
+X inactivation.
+
+```{r snvs}
+xciSnvs(res)
+table(xciSnvs(res)$x1Allele)
+```
+
+For simulated data the calls can be compared with the truth. The names X1 and
+X2 are arbitrary, so the comparison allows them to be swapped.
+
+```{r truth}
+truth <- read.delim(
+    system.file("extdata", "sim_chrX_truth.tsv", package = "EXCISE"),
+    header = FALSE, col.names = c("barcode", "state"))
+pred <- as.character(calls$call)[match(truth$barcode, calls$barcode)]
+table(truth = truth$state, EXCISE = pred)
+```
+
+# Adding calls to a SingleCellExperiment
+
+```{r sce}
+library(SingleCellExperiment)
+bc <- calls$barcode
+sce <- SingleCellExperiment(assays = list(
+    counts = matrix(0L, 2, length(bc), dimnames = list(c("g1", "g2"), bc))))
+sce <- addXciCalls(sce, res)
+table(sce$xci_call)
+```
+
+# Files compatible with excise1.5.pl
+
+With `outPrefix`, `runExcise()` also writes the five files of `excise1.5.pl`
+(`*_bc2xci.txt`, `*_summary.txt`, `*_XCISE.vcf`, `*_haplotypes.tsv` and
+`*_cell_snv_profile.tsv`) in the same format, for existing downstream scripts.
+
+```{r files-out}
+out <- file.path(tempdir(), "example")
+res <- runExcise(bam, vcf, tries = 20, pretrain = TRUE, seed = 42,
+    outPrefix = out)
+list.files(tempdir(), pattern = "^example_chrX_XCISE")
+```
+
+# Choosing parameters
+
+The two filters that matter most are `minUmis` (minimum UMIs per SNV, default
+4) and `penalty` (score penalty per discordant UMI, default 5). In simulations
+the defaults were close to the best setting at standard coverage, at low
+coverage and with sparse SNVs. A very low penalty (1) phases escape SNVs and
+turns many monoallelic cells into `Both`. A very high penalty (12 or more)
+leaves many SNVs unassigned and, on sparse data, can assign cells to the wrong
+X. A high `minUmis` only matters when SNVs have few UMIs, where it removes
+evidence.
+
+# Session information
+
+```{r session}
+sessionInfo()
+```

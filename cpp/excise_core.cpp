@@ -12,8 +12,10 @@
 // a move of SNV s only re-evaluates the cells covering s, which gives the
 // same score as a full rescore because the score is a sum of per-cell terms.
 //
-// Build:  make -C cpp            (needs htslib + zlib, C++17)
-// Usage:  cpp/excise15 -o <prefix> -s <vcf> -b <bam> [...]   (flags as excise1.5.pl)
+// This file is the algorithm as a library (excise::run_excise). The command-line
+// tool is main.cpp; the R/Bioconductor package wraps the same file.
+
+#include "excise_core.h"
 
 #include <htslib/hts.h>
 #include <htslib/sam.h>
@@ -40,15 +42,26 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <exception>
+#include <stdexcept>
 
 using std::string;
+using excise::Opt;
+using excise::Results;
 using std::vector;
 typedef int64_t i64;
 
 // ---------------------------------------------------------------------------
 // small helpers
 // ---------------------------------------------------------------------------
-static void die(const string& m) { fputs(m.c_str(), stderr); if (m.empty() || m.back() != '\n') fputc('\n', stderr); exit(1); }
+[[noreturn]] static void die(const string& m) { throw std::runtime_error(m); }
+
+// Log messages go through a callback (stderr for the CLI, R's message stream for
+// the R package). Only the calling thread logs; worker threads never do.
+static excise::LogFn g_log;
+static void LOGS(const char* s) { if (g_log) g_log(s); }
+static void LOGS(const string& s) { LOGS(s.c_str()); }
+#define LOGF(...) do { char _lb[4096]; snprintf(_lb, sizeof _lb, __VA_ARGS__); LOGS(_lb); } while (0)
 
 static double now_s() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -60,12 +73,6 @@ static string perl_num(double x) {
     if (std::isfinite(x) && x == std::floor(x) && std::fabs(x) < 1e15) snprintf(b, sizeof b, "%lld", (long long)x);
     else snprintf(b, sizeof b, "%.15g", x);
     return b;
-}
-
-static bool is_number_prefix(const char* s, int* out) {
-    if (!isdigit((unsigned char)s[0])) return false;
-    *out = atoi(s);
-    return true;
 }
 
 static string strip_gem(const string& bc) {  // s/-\d+$//
@@ -114,95 +121,6 @@ struct Out {
     void flush() { fwrite(b.data(), 1, b.size(), f); b.clear(); }
     ~Out() { flush(); fclose(f); }
 };
-
-// ---------------------------------------------------------------------------
-// options (same flags, defaults and quirks as excise1.5.pl)
-// ---------------------------------------------------------------------------
-struct Opt {
-    string sample, chromosome, snv_file, whitelist;
-    int tries = 100;
-    double min_maf = 0, min_umis = 4, penalty = 5;
-    bool scramble = false, improve_existing = false, no_softmasking = false;
-    int monostretch = 15, jobs = 1, samthreads = -1;
-    bool has_seed = false;
-    i64 seed = 0;
-    bool wl_strip_gem = false, pretrain = false, pre_tieskip = true, phase3 = false;
-    int pre_cap = 5000;
-    double pre_wmin = 3, jitter = 0.25, ph3_ratio = 0.90;
-    vector<string> bams;
-};
-
-static const char* USAGE =
-    "Usage: excise15 -o <prefix> -s <vcf> -b <bam> [...] [-r <chrom>] [-t <tries>]"
-    " [-u <min_umis>] [-m <min_maf>] [-p <penalty>]"
-    " [-j <jobs>] [-samthreads <N>] [-seed <int>]"
-    " [-wl <barcodes.txt|tsv[.gz]>] [-wl_strip_gem]"
-    " [-pretrain] [-pre_cap <N>] [-pre_wmin <W>] [-pre_tieskip] [-jitter <f>]"
-    " [-ph] [-ph3_ratio <f>]\n";
-
-static Opt parse_args(int argc, char** argv) {
-    Opt o;
-    vector<string> a(argv + 1, argv + argc);
-    size_t n = a.size(), i = 0;
-    auto hv = [&]() { return i + 1 < n; };
-    auto fexists = [](const string& p) { FILE* f = fopen(p.c_str(), "r"); if (f) fclose(f); return f != nullptr; };
-    while (i < n) {
-        const string& f = a[i];
-        int ms;
-        if (f == "-b") {
-            while (i + 1 < n && a[i + 1][0] != '-') {
-                if (!fexists(a[i + 1])) die("BAM file " + a[i + 1] + " does not exist");
-                if (std::find(o.bams.begin(), o.bams.end(), a[i + 1]) == o.bams.end()) o.bams.push_back(a[i + 1]);
-                i++;
-            }
-            i++;
-        }
-        else if (f == "-o" && hv()) { o.sample = a[i + 1]; i += 2; }
-        else if (f == "-s" && hv()) { o.snv_file = a[i + 1]; i += 2; }
-        else if (f == "-r" && hv()) { o.chromosome = a[i + 1]; i += 2; }
-        else if (f == "-t" && hv()) { o.tries = atoi(a[i + 1].c_str()); i += 2; }
-        else if (f == "-u" && hv()) { o.min_umis = atof(a[i + 1].c_str()); i += 2; }
-        else if (f == "-m" && hv()) { o.min_maf = atof(a[i + 1].c_str()); i += 2; }
-        else if (f == "-p" && hv()) { o.penalty = atof(a[i + 1].c_str()); i += 2; }
-        else if (f == "-x") { o.scramble = true; i++; }
-        else if (f == "-i") { o.improve_existing = true; i++; }
-        else if (f == "-sm") { o.no_softmasking = true; i++; }
-        else if (f == "-ms" && hv() && is_number_prefix(a[i + 1].c_str(), &ms)) { o.monostretch = ms; i += 2; }
-        else if (f == "-j" && hv()) { o.jobs = atoi(a[i + 1].c_str()); i += 2; }
-        else if (f == "-samthreads" && hv()) { o.samthreads = atoi(a[i + 1].c_str()); i += 2; }
-        else if (f == "-seed" && hv()) { o.seed = atoll(a[i + 1].c_str()); o.has_seed = true; i += 2; }
-        else if (f == "-wl" && hv()) {
-            o.whitelist = a[i + 1];
-            if (!fexists(o.whitelist)) die("Barcode whitelist " + o.whitelist + " does not exist");
-            i += 2;
-        }
-        else if (f == "-wl_strip_gem") { o.wl_strip_gem = true; i++; }
-        else if (f == "-pretrain") { o.pretrain = true; i++; }
-        else if (f == "-pre_cap" && hv()) { o.pre_cap = atoi(a[i + 1].c_str()); i += 2; }
-        else if (f == "-pre_wmin" && hv()) { o.pre_wmin = atof(a[i + 1].c_str()); i += 2; }
-        else if (f == "-pre_tieskip") { o.pre_tieskip = true; i++; }
-        else if (f == "-jitter" && hv()) { o.jitter = atof(a[i + 1].c_str()); i += 2; }
-        else if (f == "-ph") { o.phase3 = true; i++; }
-        else if (f == "-ph3_ratio" && hv()) { o.ph3_ratio = atof(a[i + 1].c_str()); i += 2; }
-        else die("Unexpected/incomplete parameter: " + f + "\n");
-    }
-    if (o.sample.empty()) die(string("No sample name\n") + USAGE);
-    if (o.snv_file.empty()) die(string("No VCF file\n") + USAGE);
-    if (o.bams.empty()) die(string("No BAM file\n") + USAGE);
-    if (o.wl_strip_gem && o.whitelist.empty()) die(string("-wl_strip_gem requires -wl <file>\n") + USAGE);
-    if (o.chromosome.empty()) o.chromosome = "X";
-    if (o.tries <= 0) o.tries = 100;
-    if (o.min_umis <= 0) o.min_umis = 10;
-    if (o.min_maf < 0 || o.min_maf > 0.5) o.min_maf = 0;
-    if (o.penalty < 1) o.penalty = 5;
-    if (o.jobs < 1) o.jobs = 1;
-    if (o.pre_cap < 100) o.pre_cap = 100;
-    if (o.pre_wmin < 0) o.pre_wmin = 0;
-    o.jitter = std::min(std::max(o.jitter, 0.0), 1.0);
-    if (o.samthreads < 0) o.samthreads = o.jobs;
-    if (o.samthreads < 1) o.samthreads = 1;
-    return o;
-}
 
 // ---------------------------------------------------------------------------
 // input
@@ -283,7 +201,7 @@ static inline void move_apply(const Opt_tables& T, int s, int old_, int new_, ve
     }
 }
 
-struct TryResult { double init = 0, best = 0; vector<int8_t> dirs; vector<std::pair<int, double>> passes; };
+struct TryResult { double init = 0, best = 0; vector<int8_t> dirs; vector<std::pair<int, double>> passes; string log; };
 
 static TryResult hill_climb(const Opt_tables& T, const vector<char>& mono, int n_cells, double pen,
                             vector<int>& order, vector<int8_t>& dirs, std::mt19937_64& rng) {
@@ -379,42 +297,65 @@ static int classify1(i64 h1, i64 h2) {  // 0 Unknown, 1 X1, 2 X2, 3 Both, 4 Low_
     if (h1 > 0 && h2 > 0) return 3;
     return 4;
 }
-static const char* LABELS[5] = {"Unknown", "X1", "X2", "Both", "Low_coverage"};
+namespace excise {
+const char* const LABELS[5] = {"Unknown", "X1", "X2", "Both", "Low_coverage"};
+
+void normalize_options(Opt& o) {
+    if (o.snv_file.empty()) throw std::runtime_error("No VCF file");
+    if (o.bams.empty()) throw std::runtime_error("No BAM file");
+    if (o.wl_strip_gem && o.whitelist.empty()) throw std::runtime_error("-wl_strip_gem requires -wl <file>");
+    if (o.chromosome.empty()) o.chromosome = "X";
+    if (o.tries <= 0) o.tries = 100;
+    if (o.min_umis <= 0) o.min_umis = 10;
+    if (o.min_maf < 0 || o.min_maf > 0.5) o.min_maf = 0;
+    if (o.penalty < 1) o.penalty = 5;
+    if (o.jobs < 1) o.jobs = 1;
+    if (o.pre_cap < 100) o.pre_cap = 100;
+    if (o.pre_wmin < 0) o.pre_wmin = 0;
+    o.jitter = std::min(std::max(o.jitter, 0.0), 1.0);
+    if (o.samthreads < 0) o.samthreads = o.jobs;
+    if (o.samthreads < 1) o.samthreads = 1;
+}
+}  // namespace excise
+using excise::LABELS;
 
 // ---------------------------------------------------------------------------
-// main
+// library entry point (the CLI is in main.cpp, the R interface in the R package)
 // ---------------------------------------------------------------------------
-int main(int argc, char** argv) {
+namespace excise {
+
+int run_excise(const Opt& o, Results& res, LogFn log) {
+    g_log = log;
+    res = Results();
+    if (o.write_files && o.sample.empty()) die("No sample name (output prefix)");
     double t_start = now_s();
-    fputs("Reading parameters ...\n", stderr);
-    Opt o = parse_args(argc, argv);
     std::mt19937_64 rng(o.has_seed ? (uint64_t)o.seed : std::random_device{}());
     const string& chrom = o.chromosome;
-    fprintf(stderr, "Sample             : %s\n", o.sample.c_str());
-    fprintf(stderr, "VCF file           : %s\n", o.snv_file.c_str());
+    LOGF("Sample             : %s\n", o.sample.c_str());
+    LOGF("VCF file           : %s\n", o.snv_file.c_str());
     {
         string j; for (size_t i = 0; i < o.bams.size(); i++) j += (i ? "," : "") + o.bams[i];
-        fprintf(stderr, "BAM files          : %zu (%s)\n", o.bams.size(), j.c_str());
+        LOGF("BAM files          : %zu (%s)\n", o.bams.size(), j.c_str());
     }
-    fprintf(stderr, "Chromosome         : %s\n", chrom.c_str());
-    fprintf(stderr, "Tries              : %d\n", o.tries);
-    fprintf(stderr, "Min UMIs/SNV       : %s\n", perl_num(o.min_umis).c_str());
-    fprintf(stderr, "Min MAF            : %s\n", perl_num(o.min_maf).c_str());
-    fprintf(stderr, "Discordant penalty : %s\n", perl_num(o.penalty).c_str());
-    fprintf(stderr, "Parallel jobs      : %d\n", o.jobs);
-    fprintf(stderr, "samtools threads   : %d\n", o.samthreads);
-    fprintf(stderr, "Barcode whitelist  : %s\n", o.whitelist.empty() ? "disabled" : o.whitelist.c_str());
-    if (!o.whitelist.empty()) fprintf(stderr, "Strip GEM suffix   : %s\n", o.wl_strip_gem ? "yes" : "no");
-    fprintf(stderr, "Pretrain           : %s\n", o.pretrain ? "yes" : "no");
-    fprintf(stderr, "Jitter scale       : %s\n", perl_num(o.jitter).c_str());
-    fprintf(stderr, "Phase 3            : %s\n", o.phase3 ? "enabled" : "disabled");
+    LOGF("Chromosome         : %s\n", chrom.c_str());
+    LOGF("Tries              : %d\n", o.tries);
+    LOGF("Min UMIs/SNV       : %s\n", perl_num(o.min_umis).c_str());
+    LOGF("Min MAF            : %s\n", perl_num(o.min_maf).c_str());
+    LOGF("Discordant penalty : %s\n", perl_num(o.penalty).c_str());
+    LOGF("Parallel jobs      : %d\n", o.jobs);
+    LOGF("samtools threads   : %d\n", o.samthreads);
+    LOGF("Barcode whitelist  : %s\n", o.whitelist.empty() ? "disabled" : o.whitelist.c_str());
+    if (!o.whitelist.empty()) LOGF("Strip GEM suffix   : %s\n", o.wl_strip_gem ? "yes" : "no");
+    LOGF("Pretrain           : %s\n", o.pretrain ? "yes" : "no");
+    LOGF("Jitter scale       : %s\n", perl_num(o.jitter).c_str());
+    LOGF("Phase 3            : %s\n", o.phase3 ? "enabled" : "disabled");
 
     // ---- whitelist ----
     std::unordered_set<string> allowed;
     i64 wl_nonempty = 0;
     bool use_wl = !o.whitelist.empty();
     if (use_wl) {
-        fputs("Reading barcode whitelist ...\n", stderr);
+        LOGS("Reading barcode whitelist ...\n");
         LineReader lr(o.whitelist);
         string line;
         while (lr.next(line)) {
@@ -431,12 +372,12 @@ int main(int argc, char** argv) {
             allowed.insert(bc);
         }
         if (allowed.empty()) die("Zero barcodes loaded from whitelist " + o.whitelist + "\n");
-        fprintf(stderr, "Whitelist barcodes loaded: %zu unique from %lld non-empty records\n", allowed.size(),
+        LOGF("Whitelist barcodes loaded: %zu unique from %lld non-empty records\n", allowed.size(),
                 (long long)wl_nonempty);
     }
 
     // ---- SNVs ----
-    fputs("Reading SNVs ...\n", stderr);
+    LOGS("Reading SNVs ...\n");
     std::unordered_map<i64, SnvInfo> snp;
     {
         LineReader lr(o.snv_file);
@@ -455,7 +396,7 @@ int main(int argc, char** argv) {
             snp[atoll(f[1].c_str())] = SnvInfo{f[2], f[3], f[4]};
         }
     }
-    fprintf(stderr, "%zu SNVs loaded from %s\n", snp.size(), o.snv_file.c_str());
+    LOGF("%zu SNVs loaded from %s\n", snp.size(), o.snv_file.c_str());
     if (snp.empty()) die("Zero SNVs, run terminated\n");
 
     // ---- BAMs ----
@@ -463,7 +404,7 @@ int main(int argc, char** argv) {
     // per worker). A read belongs to the chunk holding its start position, and
     // chunk results are concatenated in genomic order, so the observations,
     // their order and all counters equal a single sequential pass.
-    fputs("Reading BAM files ...\n", stderr);
+    LOGS("Reading BAM files ...\n");
     vector<Rec> recs;
     // cell-barcode keys point into deque storage (stable addresses)
     std::unordered_map<std::string_view, int32_t> cb_index;
@@ -567,7 +508,7 @@ int main(int argc, char** argv) {
     vector<string> bams = o.bams;
     std::sort(bams.begin(), bams.end());
     for (const string& path : bams) {
-        fprintf(stderr, "    Reading %s ...\n", path.c_str());
+        LOGF("    Reading %s ...\n", path.c_str());
         hts_pos_t clen;
         {
             samFile* fp = sam_open(path.c_str(), "r");
@@ -576,7 +517,7 @@ int main(int argc, char** argv) {
             if (!hdr) die("Cannot read header of " + path);
             int tid = sam_hdr_name2tid(hdr, chrom.c_str());
             if (tid < 0) {
-                fprintf(stderr, "    [warn] %s not in BAM header of %s; skipped\n", chrom.c_str(), path.c_str());
+                LOGF("    [warn] %s not in BAM header of %s; skipped\n", chrom.c_str(), path.c_str());
                 sam_hdr_destroy(hdr); sam_close(fp); continue;
             }
             hts_idx_t* idx = sam_index_load(fp, path.c_str());
@@ -593,12 +534,21 @@ int main(int argc, char** argv) {
             chunks[k].end = (k == nchunks - 1) ? HTS_POS_MAX : clen * (k + 1) / nchunks;
         }
         std::atomic<int> next_chunk(0);
+        std::exception_ptr err;
+        std::mutex err_mu;
         vector<std::thread> pool;
         for (int w = 0; w < nthreads; w++)
             pool.emplace_back([&]() {
-                for (int k; (k = next_chunk.fetch_add(1)) < nchunks;) parse_chunk(path, chunks[k]);
+                try {
+                    for (int k; (k = next_chunk.fetch_add(1)) < nchunks;) parse_chunk(path, chunks[k]);
+                } catch (...) {
+                    std::lock_guard<std::mutex> g(err_mu);
+                    if (!err) err = std::current_exception();
+                    next_chunk.store(nchunks);
+                }
             });
         for (auto& th : pool) th.join();
+        if (err) std::rethrow_exception(err);
         // merge in genomic order: global cell ids in first-seen order
         for (Chunk& C : chunks) {
             vector<int32_t> gid(C.cbs.size());
@@ -619,18 +569,18 @@ int main(int argc, char** argv) {
             wl_matched.insert(C.wl_matched.begin(), C.wl_matched.end());
             vector<Rec>().swap(C.recs); string().swap(C.arena);
         }
-        fprintf(stderr, "    Reads with allelic info: %lld  Alleles: %lld  UMIs: %lld/%lld (hard/soft)\n",
+        LOGF("    Reads with allelic info: %lld  Alleles: %lld  UMIs: %lld/%lld (hard/soft)\n",
                 (long long)st.inf_reads, (long long)st.inf_alleles, (long long)st.hard, (long long)st.soft);
     }
-    fprintf(stderr, "    [time] BAM reading: %.2f s\n", now_s() - t_start);
+    LOGF("    [time] BAM reading: %.2f s\n", now_s() - t_start);
 
     int n_cells = (int)cb_list.size();
     if (use_wl) {
-        fprintf(stderr, "Whitelist candidate barcodes observed in BAM: %zu\n", wl_seen.size());
-        fprintf(stderr, "Whitelist barcodes matched in BAM: %zu / %zu loaded\n", wl_matched.size(), allowed.size());
-        fprintf(stderr, "Whitelist CB-tagged candidate reads: checked=%lld kept=%lld rejected=%lld\n",
+        LOGF("Whitelist candidate barcodes observed in BAM: %zu\n", wl_seen.size());
+        LOGF("Whitelist barcodes matched in BAM: %zu / %zu loaded\n", wl_matched.size(), allowed.size());
+        LOGF("Whitelist CB-tagged candidate reads: checked=%lld kept=%lld rejected=%lld\n",
                 (long long)st.wl_cand, (long long)st.wl_kept, (long long)st.wl_rej);
-        fprintf(stderr, "Whitelist barcodes with usable chr%s allelic evidence: %d / %zu loaded\n", chrom.c_str(),
+        LOGF("Whitelist barcodes with usable chr%s allelic evidence: %d / %zu loaded\n", chrom.c_str(),
                 n_cells, allowed.size());
     }
 
@@ -687,12 +637,12 @@ int main(int argc, char** argv) {
 
     vector<i64> all_pos;
     for (const Grp& g : grp) if (all_pos.empty() || all_pos.back() != g.pos) all_pos.push_back(g.pos);
-    fprintf(stderr, "%zu SNV positions covered in %d cells\n", all_pos.size(), n_cells);
+    LOGF("%zu SNV positions covered in %d cells\n", all_pos.size(), n_cells);
     if (all_pos.empty()) die("Zero SNVs after BAM reading\n");
     if (n_cells == 0) die("Zero cells after BAM reading\n");
 
     // ---- SNV filters ----
-    fputs("Checking AFs after WASP genotyping ...\n", stderr);
+    LOGS("Checking AFs after WASP genotyping ...\n");
     size_t NP = all_pos.size();
     vector<i64> N1(NP, 0), N2(NP, 0);
     vector<int32_t> gsnv(grp.size());
@@ -723,15 +673,15 @@ int main(int argc, char** argv) {
     vector<char> mono(n_snv);
     int n_mono = 0;
     for (int s = 0; s < n_snv; s++) { mono[s] = (pN1[s] == 0 || pN2[s] == 0); n_mono += mono[s]; }
-    fprintf(stderr, "Excluded %lld SNVs < %s UMIs; %lld SNVs with MAF < %s\n", (long long)low_umis,
+    LOGF("Excluded %lld SNVs < %s UMIs; %lld SNVs with MAF < %s\n", (long long)low_umis,
             perl_num(o.min_umis).c_str(), (long long)low_maf, perl_num(o.min_maf).c_str());
-    fprintf(stderr, "Monoallelic SNVs in pool: %d / %d\n", n_mono, n_snv);
+    LOGF("Monoallelic SNVs in pool: %d / %d\n", n_mono, n_snv);
     std::sort(ratios.begin(), ratios.end());
     double median_maf = 0;
     if (!ratios.empty())
         median_maf = ratios.size() % 2 ? ratios[ratios.size() / 2]
                                        : (ratios[ratios.size() / 2 - 1] + ratios[ratios.size() / 2]) / 2;
-    fprintf(stderr, "Median MAF: %s\n", perl_num(median_maf).c_str());
+    LOGF("Median MAF: %s\n", perl_num(median_maf).c_str());
 
     // entries for phased SNVs, sorted by SNV then cell (groups already are)
     vector<int32_t> esnv, ecell, en1, en2, ec1, ec2, er1, er2;
@@ -750,13 +700,13 @@ int main(int argc, char** argv) {
     for (int s = 0; s < n_snv; s++) T.ptr[s + 1] += T.ptr[s];
     T.cell = ecell; T.n1 = en1; T.n2 = en2;
 
-    fprintf(stderr, "    [time] tables built: %.2f s\n", now_s() - t_start);
+    LOGF("    [time] tables built: %.2f s\n", now_s() - t_start);
     // ---- pretraining ----
     vector<int8_t> pre_seed(n_snv, 0);
     vector<double> unc(n_snv, 1.0);
     if (o.pretrain) {
-        fputs("Running improved pretraining ...\n", stderr);
-        fputs("  [pretrain] Building cell majority calls ...\n", stderr);
+        LOGS("Running improved pretraining ...\n");
+        LOGS("  [pretrain] Building cell majority calls ...\n");
         // per-cell (snv, call) lists
         vector<vector<std::pair<int32_t, int8_t>>> calls(n_cells);
         for (size_t k = 0; k < esnv.size(); k++) {
@@ -765,7 +715,7 @@ int main(int argc, char** argv) {
             if (o.pre_tieskip && c1 == c2) continue;
             calls[ecell[k]].push_back({esnv[k], (int8_t)(c1 >= c2 ? 1 : 2)});
         }
-        fputs("  [pretrain] Building co-segregation graph ...\n", stderr);
+        LOGS("  [pretrain] Building co-segregation graph ...\n");
         vector<double> deg(n_snv, 0);
         vector<std::pair<uint64_t, int8_t>> votes;  // key = i*n_snv + j (i < j), sign
         for (int c = 0; c < n_cells; c++) {
@@ -820,7 +770,7 @@ int main(int argc, char** argv) {
                 anbr[fill[j]] = i; aw[fill[j]++] = ew[k];
             }
         }
-        fprintf(stderr, "  [pretrain] BFS seeding (wmin=%s) ...\n", perl_num(o.pre_wmin).c_str());
+        LOGF("  [pretrain] BFS seeding (wmin=%s) ...\n", perl_num(o.pre_wmin).c_str());
         vector<int> cand(n_snv);
         std::iota(cand.begin(), cand.end(), 0);
         std::stable_sort(cand.begin(), cand.end(), [&](int x, int y) { return deg[x] > deg[y]; });
@@ -854,18 +804,17 @@ int main(int argc, char** argv) {
             unc[s] = 1.0 / (1.0 + bott[s]);
             assigned += pre_seed[s] != 0;
         }
-        fprintf(stderr, "  [pretrain] nodes=%d  edges~%zu  strong-edges~%lld  assigned=%d (%.1f%%)\n", n_snv,
+        LOGF("  [pretrain] nodes=%d  edges~%zu  strong-edges~%lld  assigned=%d (%.1f%%)\n", n_snv,
                 anbr.size(), (long long)strong, assigned, n_snv ? 100.0 * assigned / n_snv : 0.0);
     }
 
     // ---- parallel tries ----
-    fprintf(stderr, "    [time] pretraining done: %.2f s\n", now_s() - t_start);
-    fputs("Starting XCI calling\n", stderr);
+    LOGF("    [time] pretraining done: %.2f s\n", now_s() - t_start);
+    LOGS("Starting XCI calling\n");
     double t_opt = now_s();
     i64 time_seed = (i64)time(nullptr);
     vector<TryResult> results(o.tries + 1);
     std::atomic<int> next_try(1);
-    std::mutex log_mu;
     auto worker = [&]() {
         while (true) {
             int t = next_try.fetch_add(1);
@@ -900,13 +849,17 @@ int main(int argc, char** argv) {
             R.dirs.assign(n_snv, 0);
             for (int i = 0; i < n_snv; i++) R.dirs[lpos[i]] = ldir[i];
             {
-                std::lock_guard<std::mutex> g(log_mu);
-                fprintf(stderr, "Try #%d, initialising ...\n", t);
-                fprintf(stderr, "    SNVs: %d  Initial score: %s\n", n_snv, perl_num(R.init).c_str());
-                for (size_t k = 0; k < R.passes.size(); k++)
-                    fprintf(stderr, "    Pass: %zu  Improvements: %d  Score: %s\n", k + 1, R.passes[k].first,
-                            perl_num(R.passes[k].second).c_str());
-                fprintf(stderr, "    Finished Try #%d  Final score: %s\n", t, perl_num(R.best).c_str());
+                char lb[256];
+                snprintf(lb, sizeof lb, "Try #%d, initialising ...\n    SNVs: %d  Initial score: %s\n", t, n_snv,
+                         perl_num(R.init).c_str());
+                R.log += lb;
+                for (size_t k = 0; k < R.passes.size(); k++) {
+                    snprintf(lb, sizeof lb, "    Pass: %zu  Improvements: %d  Score: %s\n", k + 1, R.passes[k].first,
+                             perl_num(R.passes[k].second).c_str());
+                    R.log += lb;
+                }
+                snprintf(lb, sizeof lb, "    Finished Try #%d  Final score: %s\n", t, perl_num(R.best).c_str());
+                R.log += lb;
             }
             results[t] = std::move(R);
         }
@@ -917,7 +870,8 @@ int main(int argc, char** argv) {
         for (int k = 0; k < nt; k++) pool.emplace_back(worker);
         for (auto& th : pool) th.join();
     }
-    fprintf(stderr, "    Optimiser wall time: %.2f s\n", now_s() - t_opt);
+    for (int t = 1; t <= o.tries; t++) LOGS(results[t].log);
+    LOGF("    Optimiser wall time: %.2f s\n", now_s() - t_opt);
 
     double global_best = 0;
     bool have_best = false;
@@ -934,7 +888,7 @@ int main(int argc, char** argv) {
             long long prev;
             if (fgets(line, sizeof line, f) && sscanf(line, "Best score : %lld", &prev) == 1 && (global_best == 0 || prev > global_best)) {
                 global_best = (double)prev;
-                fprintf(stderr, "    Adopted best score from previous run: %lld\n", prev);
+                LOGF("    Adopted best score from previous run: %lld\n", prev);
             }
             fclose(f);
         }
@@ -957,7 +911,7 @@ int main(int argc, char** argv) {
 
     vector<i64> h1, h2;
     // ---- Phase 2: monoallelic SNVs by cell vote ----
-    fputs("    Phase-2 cell-vote correction for monoallelic SNVs ...\n", stderr);
+    LOGS("    Phase-2 cell-vote correction for monoallelic SNVs ...\n");
     {
         vector<int8_t> bi(n_snv);
         for (int s = 0; s < n_snv; s++) bi[s] = mono[s] ? 0 : dirs[s];
@@ -977,12 +931,12 @@ int main(int argc, char** argv) {
             int correct = v1[s] >= v2[s] ? (obs1 ? 1 : -1) : (obs1 ? -1 : 1);
             if (correct != dirs[s]) { dirs[s] = (int8_t)correct; changed++; } else kept++;
         }
-        fprintf(stderr, "    Mono SNVs corrected: %d  already correct: %d\n", changed, kept);
+        LOGF("    Mono SNVs corrected: %d  already correct: %d\n", changed, kept);
     }
 
     // ---- Phase 3 (opt-in) ----
     if (o.phase3) {
-        fputs("    Phase-3 directionality assignment for dir=0 biallelic SNVs ...\n", stderr);
+        LOGS("    Phase-3 directionality assignment for dir=0 biallelic SNVs ...\n");
         hap_totals(dirs, esnv, ecell, en1, en2, n_cells, h1, h2);
         vector<int8_t> res(n_snv, 0);
         int assigned = 0, stayed = 0;
@@ -1014,10 +968,10 @@ int main(int argc, char** argv) {
             if (frac >= o.ph3_ratio) { res[s] = (int8_t)(wi == 0 ? 1 : -1); assigned++; }
             else stayed++;
         }
-        fprintf(stderr, "    Phase-3: assigned=%d  stayed Unk=%d\n", assigned, stayed);
+        LOGF("    Phase-3: assigned=%d  stayed Unk=%d\n", assigned, stayed);
         for (int s = 0; s < n_snv; s++) if (res[s] != 0) dirs[s] = res[s];
 
-        fputs("    Phase-3 cell-vote assignment for dir=0 biallelic SNVs ...\n", stderr);
+        LOGS("    Phase-3 cell-vote assignment for dir=0 biallelic SNVs ...\n");
         hap_totals(dirs, esnv, ecell, ec1, ec2, n_cells, h1, h2);
         vector<int8_t> ch = cell_hap_from(h1, h2);
         vector<double> cpos(n_snv, 0), cneg(n_snv, 0);
@@ -1036,9 +990,9 @@ int main(int argc, char** argv) {
             if (wc / std::max(tev, 1.0) >= o.ph3_ratio) { dirs[s] = (int8_t)win; assigned++; }
             else stayed++;
         }
-        fprintf(stderr, "    Phase-3: assigned=%d  stayed Unk=%d\n", assigned, stayed);
+        LOGF("    Phase-3: assigned=%d  stayed Unk=%d\n", assigned, stayed);
     } else {
-        fputs("    Phase 3 disabled (use -ph to enable); dir=0 SNVs remain unresolved.\n", stderr);
+        LOGS("    Phase 3 disabled (use -ph to enable); dir=0 SNVs remain unresolved.\n");
     }
 
     // ---- outputs (flip so that X2 >= X1) ----
@@ -1048,23 +1002,45 @@ int main(int argc, char** argv) {
         hap_totals(dirs, esnv, ecell, ec1, ec2, n_cells, h1, h2);
         std::fill(cnt, cnt + 5, 0);
         for (int c = 0; c < n_cells; c++) { lab[c] = (int8_t)classify1(h1[c], h2[c]); cnt[lab[c]]++; }
-        fprintf(stderr, "    X1/X2/Both/LowC/Unk: %lld / %lld / %lld / %lld / %lld\n", (long long)cnt[1],
+        LOGF("    X1/X2/Both/LowC/Unk: %lld / %lld / %lld / %lld / %lld\n", (long long)cnt[1],
                 (long long)cnt[2], (long long)cnt[3], (long long)cnt[4], (long long)cnt[0]);
         if (cnt[1] > cnt[2]) {
-            fputs("    Flipping X1<->X2 so that X2 >= X1 ...\n", stderr);
+            LOGS("    Flipping X1<->X2 so that X2 >= X1 ...\n");
             for (auto& d : dirs) d = (int8_t)-d;
             continue;
         }
         break;
     }
 
-    fprintf(stderr, "    [time] phases 2/3 done: %.2f s\n", now_s() - t_start);
+    LOGF("    [time] phases 2/3 done: %.2f s\n", now_s() - t_start);
     vector<int> cb_order(n_cells);
     std::iota(cb_order.begin(), cb_order.end(), 0);
     std::sort(cb_order.begin(), cb_order.end(), [&](int x, int y) { return cb_list[x] < cb_list[y]; });
 
-    fputs("    Outputting barcode-to-XCI ...\n", stderr);
-    {
+    // ---- results returned to the caller ----
+    for (int c : cb_order) {
+        res.barcode.push_back(cb_list[c]); res.hap1.push_back(h1[c]); res.hap2.push_back(h2[c]);
+        res.label.push_back(lab[c]);
+    }
+    for (int s = 0; s < n_snv; s++) {
+        const SnvInfo& si = snp.at(phased_pos[s]);
+        res.chrom.push_back(chrom); res.pos.push_back(phased_pos[s]); res.id.push_back(si.rs);
+        res.ref.push_back(si.ref); res.alt.push_back(si.alt); res.dir.push_back(dirs[s]);
+        res.ref_umis.push_back(pN1[s]); res.alt_umis.push_back(pN2[s]); res.mono.push_back(mono[s]);
+    }
+    res.median_maf = median_maf;
+    for (int k = 0; k < 5; k++) res.cell_counts[k] = cnt[k];
+    if (o.return_profile) {
+        vector<int> rank(n_cells);
+        for (int i = 0; i < n_cells; i++) rank[cb_order[i]] = i;
+        for (size_t k = 0; k < esnv.size(); k++) {
+            if (ec1[k] + ec2[k] <= 0) continue;
+            res.prof_cell.push_back(rank[ecell[k]]); res.prof_snv.push_back(esnv[k]);
+            res.prof_ref.push_back(ec1[k]); res.prof_alt.push_back(ec2[k]);
+        }
+    }
+    if (o.write_files) LOGS("    Outputting barcode-to-XCI ...\n");
+    if (o.write_files) {
         Out f(prefix + "_bc2xci.txt");
         for (int c : cb_order) f.printf("%s\t%lld\t%lld\t%s\n", cb_list[c].c_str(), (long long)h1[c], (long long)h2[c], LABELS[lab[c]]);
     }
@@ -1080,10 +1056,17 @@ int main(int argc, char** argv) {
     int ref1 = 0, alt1 = 0, unk1 = 0;
     for (int8_t d : dirs) { ref1 += d == 1; alt1 += d == -1; unk1 += d == 0; }
     i64 grand = cnt[0] + cnt[1] + cnt[2] + cnt[3] + cnt[4];
-    fprintf(stderr, "    Total XCI-informative UMIs   : %lld\n", (long long)total_umi);
-    fprintf(stderr, "    SNVs informative/non-informative/mono : %d/%d/%d\n", ref1 + alt1 - n_mono, unk1, n_mono);
+    LOGF("    Total XCI-informative UMIs   : %lld\n", (long long)total_umi);
+    LOGF("    SNVs informative/non-informative/mono : %d/%d/%d\n", ref1 + alt1 - n_mono, unk1, n_mono);
     auto pct = [&](i64 x) { return grand ? 100.0 * x / grand : 0.0; };
-    {
+    res.best_score = global_best; res.total_umis = total_umi; res.concordant = conc; res.discordant = disc;
+    res.n_snvs = n_snv; res.n_informative = ref1 + alt1 - n_mono; res.n_noninformative = unk1;
+    res.n_monoallelic = n_mono; res.whitelist_used = use_wl;
+    if (use_wl) {
+        res.wl_loaded = (i64)allowed.size(); res.wl_matched = (i64)wl_matched.size();
+        res.wl_reads_checked = st.wl_cand; res.wl_reads_kept = st.wl_kept; res.wl_reads_rejected = st.wl_rej;
+    }
+    if (o.write_files) {
         Out f(prefix + "_summary.txt");
         f.printf("Best score  : %s\n", perl_num(global_best).c_str());
         f.printf("Total UMIs  : %lld\n", (long long)total_umi);
@@ -1113,8 +1096,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    fputs("    Outputting VCF ...\n", stderr);
-    {
+    if (o.write_files) LOGS("    Outputting VCF ...\n");
+    if (o.write_files) {
         Out f(prefix + ".vcf");
         f.put("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
         f.put("##INFO=<ID=X1A,Number=1,Type=String,Description=\"X1 haplotype allele: Ref, Alt, or Unk (escape candidate)\">\n");
@@ -1135,8 +1118,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    fputs("    Outputting haplotype sequence table ...\n", stderr);
-    {
+    if (o.write_files) LOGS("    Outputting haplotype sequence table ...\n");
+    if (o.write_files) {
         Out f(prefix + "_haplotypes.tsv");
         f.put("CHROM\tPOS\tID\tREF\tALT\tX1_allele\tX2_allele\tmono\n");
         for (int s = 0; s < n_snv; s++) {
@@ -1150,8 +1133,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    fputs("    Outputting per-cell SNV profile ...\n", stderr);
-    {
+    if (o.write_files) LOGS("    Outputting per-cell SNV profile ...\n");
+    if (o.write_files) {
         vector<int> rank(n_cells);
         for (int i = 0; i < n_cells; i++) rank[cb_order[i]] = i;
         vector<size_t> po(esnv.size());
@@ -1173,7 +1156,10 @@ int main(int argc, char** argv) {
                      d == 0 ? "Unk" : (d == 1 ? "Ref" : "Alt"), r, a, r + a, hx1, hx2, LABELS[lab[c]], (int)mono[s]);
         }
     }
-    fprintf(stderr, "    Per-cell SNV profile written: %s_cell_snv_profile.tsv\n", prefix.c_str());
-    fprintf(stderr, "    Total wall time: %.2f s\n", now_s() - t_start);
+    if (o.write_files) LOGF("    Per-cell SNV profile written: %s_cell_snv_profile.tsv\n", prefix.c_str());
+    LOGF("    Total wall time: %.2f s\n", now_s() - t_start);
+    g_log = nullptr;
     return 0;
 }
+
+}  // namespace excise

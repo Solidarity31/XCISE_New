@@ -1,0 +1,51 @@
+Package: EXCISE
+Type: Package
+Title: X-Chromosome Inactivation Calling from Single-Cell RNA-seq
+Version: 0.99.0
+Authors@R: c(
+    person("Zihan", "Zhuang", email = "zhuangzihan2021@hotmail.com",
+        role = c("aut", "cre")),
+    person("R. H.", "Henning", role = "ctb",
+        comment = "author of the original XCISE"),
+    person("T. M.", "Rust", role = "ctb",
+        comment = "author of the original XCISE"),
+    person("K.", "Dijksterhuis", role = "ctb",
+        comment = "author of the original XCISE"),
+    person("B. J. L.", "Eggen", role = "ctb",
+        comment = "author of the original XCISE"),
+    person("V.", "Guryev", role = "ctb",
+        comment = "author of the original XCISE"))
+Description: Infers, for every cell of a female single-cell RNA-seq sample,
+    which X chromosome is inactive. Allele-specific UMIs at heterozygous
+    SNVs (from STAR alignments in WASP mode) are phased into two haplotypes
+    by a parallel multi-start optimiser with optional co-segregation
+    pretraining, and each cell is called X1, X2, biallelic (Both),
+    Low_coverage or Unknown. Escape candidates and monoallelic SNVs are
+    handled explicitly. EXCISE extends XCISE (Henning et al. 2024); the
+    implementation is a C++ port of excise1.5.pl built on htslib (Rhtslib).
+License: file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.3.0)
+Imports:
+    methods,
+    stats,
+    Rcpp,
+    S4Vectors,
+    IRanges,
+    GenomicRanges,
+    SummarizedExperiment
+LinkingTo: Rcpp, Rhtslib
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    BiocStyle,
+    SingleCellExperiment
+SystemRequirements: GNU make, C++17
+VignetteBuilder: knitr
+biocViews: Software, SingleCell, RNASeq, Sequencing, Genetics, Epigenetics,
+    Transcriptomics
+URL: https://github.com/Solidarity31/EXCISE
+BugReports: https://github.com/Solidarity31/EXCISE/issues
+Config/testthat/edition: 3
+RoxygenNote: 7.3.1

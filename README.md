@@ -66,8 +66,10 @@ Key advances over the original XCISE include **MCMC-based haplotype optimization
 EXCISE/
 ├── excise1.5.pl                 # EXCISE v1.5: greedy multi-try + escape/monoallelic handling (latest)
 ├── excise15.py                  # Fast Python/numba port of excise1.5.pl (same flags and outputs)
-├── cpp/excise15.cpp, Makefile   # Fastest: C++/htslib port of excise1.5.pl (same flags and outputs)
-├── simulations/                 # XCI-skew simulations, Perl/Python/C++ benchmark, figures
+├── cpp/excise_core.{h,cpp}      # Fastest: C++/htslib port of excise1.5.pl as a library
+├── cpp/main.cpp, Makefile       # its command-line tool cpp/excise15 (same flags and outputs)
+├── bioc/EXCISE/                 # R/Bioconductor package wrapping the C++ core (runExcise())
+├── simulations/                 # simulations, benchmarks, figures; SIMULATION_PLAN.md
 ├── extract_bc2xci_overlap.R     # Cells shared by two bc2xci files with each run's label
 ├── tests/simulate_xci_data.py   # Simulated WASP BAM + VCF with known truth (testing/benchmarking)
 ├── excise.pl                    # MCMC + simulated annealing + pretraining
@@ -194,6 +196,11 @@ Validation against `excise1.5.pl`:
 - Given Perl's optimizer result (`make -C cpp excise15_test`, `INJECT=<file>`), Phase 2, both Phase-3 passes and all writers are byte-identical on sparse data. This holds with and without `-ph`, at several `-u` and `-p` settings.
 - The input paths also match Perl byte for byte: a gzipped whitelist with `-wl_strip_gem`, a gzipped VCF, reads without `UB` (soft UMIs), `-sm`, `-ms`, and several BAMs.
 - Speed: 174–199× faster than Perl at every size from 1,000 to 16,000 cells, which is 14–75× faster than the Python port (geometric means per size). At 16,000 cells (0.96 M reads), it took 0.95–0.99 s, compared with 181–185 s for Perl and 13–14 s for Python. On a BAM shaped like real 10x data (10 M chrX reads, 90% without WASP tags), BAM reading took 1.5 s, against 5.0 s single-threaded and 2.0 s for `samtools view -@4 -c`. The output was byte-identical.
+
+
+### R / Bioconductor package (`bioc/EXCISE`)
+
+The C++ core is also available from R as `EXCISE::runExcise()`. It returns the per-cell calls as a `DataFrame`, the phased SNVs as a `GRanges` and the run summary, and can add the calls to a `SingleCellExperiment` (`addXciCalls()`). With `outPrefix`, it writes the same five files as the command-line tool, byte-identical for the same seed. See `bioc/README.md` for building, checks and the steps still needed before Bioconductor submission (notably a licence).
 
 ### MCMC pipeline (`excise.pl`)
 
