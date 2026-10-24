@@ -65,6 +65,13 @@ Key advances over the original XCISE include **MCMC-based haplotype optimization
 ```
 EXCISE/
 ├── excise1.5.pl                 # EXCISE v1.5: greedy multi-try + escape/monoallelic handling (latest)
+├── excise15.py                  # Fast Python/numba port of excise1.5.pl (same flags and outputs)
+├── cpp/excise_core.{h,cpp}      # Fastest: C++/htslib port of excise1.5.pl as a library
+├── cpp/main.cpp, Makefile       # its command-line tool cpp/excise15 (same flags and outputs)
+├── bioc/EXCISE/                 # R/Bioconductor package wrapping the C++ core (runExcise())
+├── simulations/                 # simulations, benchmarks, figures; SIMULATION_PLAN.md
+├── extract_bc2xci_overlap.R     # Cells shared by two bc2xci files with each run's label
+├── tests/simulate_xci_data.py   # Simulated WASP BAM + VCF with known truth (testing/benchmarking)
 ├── excise.pl                    # MCMC + simulated annealing + pretraining
 ├── xcise_mt.pl                  # Greedy multi-try variant
 ├── xcise_mcmc.pl                # MCMC + co-segregation graph variant
@@ -149,6 +156,51 @@ The pipeline runs these stages in order:
 6. **Output.** Haplotype labels are swapped if needed so that `#X2 cells ≥ #X1 cells`, and all output files are written.
 
 > `excise1.5.pl` does not accept the MCMC flags (`-cs`, `-T0`, `-Tmin`, `-blocksize`, `-blocktype`) or the `xcise_mcmc.pl` graph flags. Any unknown flag aborts with `Unexpected/incomplete parameter`.
+
+### Fast Python port (`excise15.py`)
+
+`excise15.py` runs the same algorithm as `excise1.5.pl`, with the same flags and the same output files, but much faster:
+
+```bash
+pip install numpy numba pysam
+python3 excise15.py -o SAMPLE_NAME -s hets_chrX.vcf.gz -b sample_WASP.bam \
+  -r X -t 100 -j 8 -seed 42 -pretrain -ph
+```
+
+The main speedup is algorithmic. After each single-SNV move, `excise1.5.pl` rescores the run by looping over **every cell**. The score is a sum of per-cell terms, so `excise15.py` re-evaluates only the cells that cover the moved SNV. The resulting score is identical, but each move is far cheaper. The hill-climber, pretraining graph and BFS are compiled with numba. BAM evidence is packed once into flat integer arrays, so the inner loops no longer split `"umi\tcb"` strings. BAM input is read with `pysam`, so no `samtools` binary is needed, but the BAM must be indexed.
+
+Validation on simulated data (`tests/simulate_xci_data.py`):
+
+- When both scripts reach the same optimum, all five output files are byte-identical to `excise1.5.pl`. This holds with and without `-pretrain`, and with `-ph`.
+- Given the same optimizer result, Phase 2, both Phase-3 passes and all output writers match exactly, including on sparse data with many monoallelic SNVs.
+- On 1,000–16,000 cells (2,000 SNVs, `-t 4 -j 4 -pretrain`, 3 datasets per size), it was 2.5× to 13.7× faster than Perl. The optimizer took 0.04–0.06 s, so most of the remaining time is BAM reading and numba compilation. See `simulations/`.
+- The compiled numba kernels are cached on disk (`__pycache__/`). The first run in a new location compiles them, and later runs skip that step, saving about 1.3 s per run.
+
+Results are not bit-identical to the Perl script for the same `-seed`, because the RNGs differ and Perl iterates hashes in random order. On hard, sparse data, individual tries can therefore reach different local optima, as they do between two Perl runs with different seeds.
+
+### Fast C++ port (`cpp/excise15`)
+
+`cpp/excise15` is the same program again in C++17 with htslib, with the same flags and the same five output files. It is the fastest option:
+
+```bash
+make -C cpp                    # needs htslib + zlib (apt install libhts-dev, or conda install -c bioconda htslib)
+cpp/excise15 -o SAMPLE_NAME -s hets_chrX.vcf.gz -b sample_WASP.bam \
+  -r X -t 100 -j 8 -seed 42 -pretrain -ph
+```
+
+The Python port spends almost all of its time outside the optimizer: decoding BAM records one at a time through pysam, plus numba compilation at start-up. The C++ port removes both. htslib decodes the BAM natively, and the binary is compiled ahead of time. The chromosome is also split into chunks that are decompressed and parsed in parallel on `-samthreads` threads (default `-j`). Each read belongs to the chunk holding its start, and chunks are merged in genomic order, so the result is the same as a single sequential pass. The UMI collapsing (as in `%umis` / `%cb2allele`) uses one sort over a flat array, and the co-segregation votes are summed by sorting rather than through hash tables. The optimizer uses the same delta scoring as the Python port, and tries run on `-j` threads. For a non-system htslib, use `make -C cpp HTSLIB_PREFIX=$CONDA_PREFIX`.
+
+Validation against `excise1.5.pl`:
+
+- On the 15 benchmark datasets, all five output files are byte-identical in 12 runs. In the remaining 3 runs (1,000 cells, where the search is hardest), every cell gets the same `X1`/`X2`/`Both` label as in Perl. The haplotype counts differ slightly because the search reached a different local optimum.
+- Given Perl's optimizer result (`make -C cpp excise15_test`, `INJECT=<file>`), Phase 2, both Phase-3 passes and all writers are byte-identical on sparse data. This holds with and without `-ph`, at several `-u` and `-p` settings.
+- The input paths also match Perl byte for byte: a gzipped whitelist with `-wl_strip_gem`, a gzipped VCF, reads without `UB` (soft UMIs), `-sm`, `-ms`, and several BAMs.
+- Speed: 174–199× faster than Perl at every size from 1,000 to 16,000 cells, which is 14–75× faster than the Python port (geometric means per size). At 16,000 cells (0.96 M reads), it took 0.95–0.99 s, compared with 181–185 s for Perl and 13–14 s for Python. On a BAM shaped like real 10x data (10 M chrX reads, 90% without WASP tags), BAM reading took 1.5 s, against 5.0 s single-threaded and 2.0 s for `samtools view -@4 -c`. The output was byte-identical.
+
+
+### R / Bioconductor package (`bioc/EXCISE`)
+
+The C++ core is also available from R as `EXCISE::runExcise()`. It returns the per-cell calls as a `DataFrame`, the phased SNVs as a `GRanges` and the run summary, and can add the calls to a `SingleCellExperiment` (`addXciCalls()`). With `outPrefix`, it writes the same five files as the command-line tool, byte-identical for the same seed. See `bioc/README.md` for building, checks and the steps still needed before Bioconductor submission (notably a licence).
 
 ### MCMC pipeline (`excise.pl`)
 
@@ -318,15 +370,18 @@ Rscript annotate_vcf_with_gtf.R \
   --gtf=gencode_v46_GRCh38 \
   --out=SAMPLE_chrX_XCISE.annot.tsv
 
-# Use a local GTF
+# Use a local GTF; merge the excise1.5 haplotype table, add XCI status, summary and plots
 Rscript annotation.R \
   --vcf=SAMPLE_chrX_XCISE.vcf \
+  --hap=SAMPLE_chrX_XCISE_haplotypes.tsv \
   --fasta=/path/to/genome.fa \
   --gtf=/path/to/annotation.gtf \
+  --xci_ref=xci_reference.tsv \
+  --summary=TRUE --plot=TRUE \
   --out=SAMPLE_chrX_XCISE.annot.tsv
 ```
 
-Outputs: per-SNV gene name, biotype, and nearest upstream/downstream gene with distance in bp.
+`annotation.R` outputs per-SNV gene name, biotype, XCI status (with `--xci_ref`), and the nearest upstream/downstream gene with distance in bp. `--hap` merges the haplotype TSV (X1/X2 alleles) with the VCF (`X1A` tag and `AD` UMI counts), cross-checks the two phasings and writes `*.haplotype_merged.tsv` with per-SNV X1/X2 UMIs. `--summary` writes a readable `*.summary.txt` and a `*.gene_summary.tsv`. `--plot` draws X1/X2 UMIs along chrX, the per-SNV UMI distribution on each haplotype, and the per-SNV X1 fraction. Without `--hap`, the phase comes from the VCF `X1A` tag, so the original XCISE VCF also works. The GTF is read through `grep`, which keeps only the `gene` rows before parsing (about 2% of a GENCODE GTF). This makes the import roughly 9–13× faster than parsing the whole file, and gives the same gene table. On systems without `grep` (or `gzip`, for `.gtf.gz`), it falls back to rtracklayer or a full `fread`.
 
 ---
 

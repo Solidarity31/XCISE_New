@@ -1,0 +1,5 @@
+c1000_s11 cpp             t=100  0.1 s  best=42129  cell_acc=0.9960
+c1000_s11 python          t=100  2.6 s  best=42127  cell_acc=0.9960
+c1000_s11 perl1.5         t=100  289.8 s  best=42131  cell_acc=0.9960
+c1000_s11 original_xcise  t=100  3361.8 s  best=42135  cell_acc=0.9960
+T100 EXIT 0

@@ -1,0 +1,8 @@
+LICENCE NOT YET CHOSEN - REQUIRED BEFORE SUBMISSION TO BIOCONDUCTOR.
+
+EXCISE is derived from XCISE (https://github.com/Vityay/XCISE; Henning RH,
+Rust TM, Dijksterhuis K, Eggen BJL, Guryev V). Neither repository currently
+states a licence. Bioconductor requires an open-source licence (for example
+Artistic-2.0, GPL-3 or MIT), and redistributing code derived from XCISE
+requires the XCISE authors' permission. Replace this file and the 'License'
+field in DESCRIPTION once a licence has been agreed.

@@ -1,0 +1,17 @@
+cells=1000 seed=11  perl=12.4s python=4.5s  speedup=2.7x identical=False
+cells=1000 seed=12  perl=12.4s python=4.7s  speedup=2.6x identical=False
+cells=1000 seed=13  perl=10.2s python=4.9s  speedup=2.1x identical=False
+cells=2000 seed=11  perl=21.0s python=5.6s  speedup=3.8x identical=True
+cells=2000 seed=12  perl=24.4s python=5.1s  speedup=4.8x identical=False
+cells=2000 seed=13  perl=20.6s python=5.5s  speedup=3.7x identical=False
+cells=4000 seed=11  perl=45.2s python=6.3s  speedup=7.1x identical=True
+cells=4000 seed=12  perl=50.6s python=5.9s  speedup=8.5x identical=True
+cells=4000 seed=13  perl=48.9s python=6.5s  speedup=7.5x identical=True
+cells=8000 seed=11  perl=78.3s python=8.8s  speedup=8.9x identical=True
+cells=8000 seed=12  perl=81.5s python=8.6s  speedup=9.5x identical=True
+cells=8000 seed=13  perl=92.6s python=9.0s  speedup=10.3x identical=True
+cells=16000 seed=11  perl=181.0s python=13.0s  speedup=13.9x identical=True
+cells=16000 seed=12  perl=184.9s python=13.4s  speedup=13.8x identical=True
+cells=16000 seed=13  perl=183.3s python=13.9s  speedup=13.2x identical=True
+SPEED EXIT 0
+ANNOTATE EXIT 0

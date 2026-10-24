@@ -1,0 +1,7 @@
+# htslib comes from the Bioconductor package Rhtslib (static library).
+RHTSLIB_LIBS=$(shell "${R_HOME}/bin${R_ARCH_BIN}/Rscript" -e 'Rhtslib::pkgconfig("PKG_LIBS")')
+RHTSLIB_CPPFLAGS=$(shell "${R_HOME}/bin${R_ARCH_BIN}/Rscript" -e 'Rhtslib::pkgconfig("PKG_CPPFLAGS")')
+
+CXX_STD = CXX17
+PKG_CPPFLAGS = $(RHTSLIB_CPPFLAGS)
+PKG_LIBS = $(RHTSLIB_LIBS) -pthread

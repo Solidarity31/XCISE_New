@@ -1,0 +1,5 @@
+dataset	n_cells	seed	tries	tool	wall_s	best_score	cell_acc
+c1000_s11	1000	11	100	cpp	0.15	42129	0.9960
+c1000_s11	1000	11	100	python	2.63	42127	0.9960
+c1000_s11	1000	11	100	perl1.5	289.82	42131	0.9960
+c1000_s11	1000	11	100	original_xcise	3361.79	42135	0.9960

@@ -1,0 +1,4 @@
+# Simulated BAMs and per-run outputs are large and fully regenerable
+data/
+# live run logs; final copies are committed under results/logs/
+/*.log
