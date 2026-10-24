@@ -1,18 +1,19 @@
 # EXCISE 1.5 simulations
 
-Simulation and benchmarking for `excise15.py`, the Python/numba port of `excise1.5.pl`.
-Everything in this directory comes from **simulated data only**. No real
-biological datasets are read or written here.
+Simulations and benchmarks for EXCISE 1.5 and its ports (`excise1.5.pl`, `excise15.py`,
+`cpp/excise15`), against the original XCISE. Everything in this directory comes from
+**simulated data only**. No real biological datasets are read or written here.
 
 ```
 simulations/
+├── SIMULATION_PLAN.md        # completed and still-needed simulation tests, with designs
 ├── run_xci_skew_sweep.py     # XCI-skew experiment: simulate -> excise15.py -> score
 ├── run_speed_benchmark.py    # original XCISE vs EXCISE 1.5 Perl / Python / C++ runtime by cell number
 ├── run_default_tries_benchmark.py  # the same tools at the default -t 100
+├── run_param_sweep.py        # -u x -p grid on four regimes (cpp/excise15)
 ├── make_figures.R            # all figures (ggplot2); reads results/ only
-├── results/                  # numerical results (TSV / CSV) behind every figure
+├── results/                  # numerical results (TSV / CSV) behind every figure; results/logs/ = run logs
 ├── figures/                  # PDF + 300 dpi PNG
-├── sweep.log, speed.log      # run logs
 └── data/                     # simulated BAMs + per-run outputs (git-ignored, regenerable)
 ```
 
@@ -21,11 +22,14 @@ simulations/
 ```bash
 pip install numpy numba pysam          # plus samtools and perl Parallel::ForkManager
 python3 simulations/run_xci_skew_sweep.py --reps 10 --jobs 4
-python3 simulations/run_speed_benchmark.py --jobs 4
+make -C cpp                            # C++ port (htslib); needed by the speed and parameter runs
+python3 simulations/run_speed_benchmark.py --jobs 4 [--xcise /path/to/original/xcise.pl]
+python3 simulations/run_default_tries_benchmark.py --xcise /path/to/original/xcise.pl
+python3 simulations/run_param_sweep.py --reps 5 --jobs 4
 Rscript simulations/make_figures.R     # ggplot2, dplyr, tidyr, readr, patchwork, scales
 ```
 
-Both runners reuse existing datasets and runs, and never overwrite them. Run the two
+All runners reuse existing datasets and runs, and never overwrite them. Run the
 experiments one after the other, not at the same time, so that the runtimes are not
 measured under CPU contention.
 
@@ -65,7 +69,7 @@ chosen from the SNV haplotypes. Every SNV and cell metric uses that same mapping
 - **Minority-class recall and precision**: for the true X2 cells.
 - **Informative cell recovery**: cells called X1, X2 or Both / all cells, and true
   X1/X2 cells called X1 or X2.
-- **Runtime**: wall-clock time of the whole `excise15.py` run.
+- **Runtime**: wall-clock time of the whole run (including BAM reading).
 
 ## Results
 

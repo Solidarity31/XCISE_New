@@ -351,9 +351,14 @@ if (file.exists(ps_path)) {
               across(c(cell_acc, wrong_x_pct, unassigned_pct, mono_recovery, recall_Both, hap_acc,
                        snvs_pass_filter, escape_unassigned),
                      list(mean = mean, sd = sd, min = min, max = max)), .groups = "drop") %>%
-    mutate(regime = factor(regime, names(regime_lab), regime_lab),
+    mutate(regime = factor(regime, names(regime_lab)))
+  # tables keep the plain regime keys; the plots use the multi-line labels
+  write_tsv(pss %>% arrange(regime, min_umis, penalty), file.path(res_dir, "param_sweep_summary.tsv"))
+  write_csv(pss %>% select(regime, min_umis, penalty, n_rep, cell_acc_mean, wrong_x_pct_mean,
+                           unassigned_pct_mean), file.path(res_dir, "fig6_param_sweep_data.csv"))
+  pss <- pss %>%
+    mutate(regime = factor(regime_lab[as.character(regime)], regime_lab),
            u = factor(min_umis, sort(unique(min_umis))), p = factor(penalty, sort(unique(penalty))))
-  write_tsv(pss %>% select(-u, -p), file.path(res_dir, "param_sweep_summary.tsv"))
   dflt <- pss %>% filter(min_umis == 4, penalty == 5)
   heat <- function(var, title, fmt, low, high, better_high) {
     ggplot(pss, aes(p, u, fill = .data[[var]])) +
@@ -376,8 +381,6 @@ if (file.exists(ps_path)) {
               "#fdf3f2", "#b42c2b", FALSE)
   f6c <- heat("unassigned_pct_mean", "Non-escape SNVs left unassigned (%)", "%.0f",
               "#f4f4f2", "#52514e", FALSE)
-  write_csv(pss %>% select(regime, min_umis, penalty, n_rep, cell_acc_mean, wrong_x_pct_mean,
-                           unassigned_pct_mean), file.path(res_dir, "fig6_param_sweep_data.csv"))
   fig6 <- (f6a / f6b / f6c) +
     plot_annotation(tag_levels = "A", caption = sprintf(paste0(
       "Mean of %d simulated replicates per regime and setting (2,000 cells: 5%% Both, X1:X2 = 50:50; 5%% escape SNVs). ",

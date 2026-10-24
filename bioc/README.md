@@ -52,6 +52,9 @@ BiocCheck's online checks were skipped):
    own Git repository. Copy `bioc/EXCISE/` into a new repository, e.g.
    `Solidarity31/EXCISE-bioc`, or make this repository package-only.
 5. **Current Bioconductor.** Re-run `R CMD check` and `BiocCheck` with internet
-   access, under the current release and devel R/Bioconductor.
+   access, under the current release and devel R/Bioconductor. Bioconductor requires
+   new packages to depend on the R version of the devel branch, so raise `Depends:
+   R (>= 4.3.0)` in DESCRIPTION to whatever devel requires at submission time. The
+   checks here used R 4.3.3 / Bioconductor 3.18, which are older than current devel.
 6. **Submit.** Open an issue at https://github.com/Bioconductor/Contributions
    and follow the reviewer checklist.
